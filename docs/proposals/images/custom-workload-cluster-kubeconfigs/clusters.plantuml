@@ -1,0 +1,34 @@
+@startuml
+
+skinparam padding 6
+left to right direction
+
+cloud "Management Cluster" {
+    rectangle "capi-controller-manager"
+    rectangle "HTTP proxy"
+    rectangle "SOCKS proxy"
+    rectangle "TCP tunnel"
+}
+
+cloud "Workload Cluster A" {
+    rectangle "kube-apiserver A"
+}
+
+cloud "Workload Cluster B" {
+    rectangle "kube-apiserver B"
+}
+
+cloud "Workload Cluster C" {
+    rectangle "kube-apiserver C"
+}
+
+[capi-controller-manager] --> [HTTP proxy]
+[HTTP proxy] --> [kube-apiserver A]
+
+[capi-controller-manager] --> [SOCKS proxy]
+[SOCKS proxy] --> [kube-apiserver B]
+
+[capi-controller-manager] --> [TCP tunnel]
+[TCP tunnel] --> [kube-apiserver C]
+
+@enduml

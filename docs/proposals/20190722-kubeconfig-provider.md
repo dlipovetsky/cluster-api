@@ -13,7 +13,7 @@ status: provisional
 
 ## Table of Contents
 
-* [Custom kubeconfigs for workload clusters](#custom-kubeconfigs-for-workload-clusters)
+* [Custom workload cluster kubeconfigs](#custom-workload-cluster-kubeconfigs)
   * [Table of Contents](#table-of-contents)
   * [Glossary](#glossary)
   * [Summary](#summary)
@@ -43,6 +43,10 @@ This proposal describes how to allow the Cluster API Controllers to reach Worklo
 It introduces a new controller--the Kubeconfig Provider--that generates kubeconfigs that contain information necessary to reach the Workload Cluster API server through a proxy or tunnel.
 
 This change will enable a Management Cluster to run in a restricted network environment, and to manage Workload Clusters in restricted network environments.
+
+![management and workload clusters diagram](images/custom-workload-cluster-kubeconfigs/clusters.png)
+
+<!-- figure showing topology of management cluster in a restricted network, another figure showing workload clusters in restricted network environments -->
 
 ## Motivation
 
