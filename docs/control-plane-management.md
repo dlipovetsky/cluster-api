@@ -14,19 +14,39 @@ A common way to hedge against corruption of the on-disk state is to run an etcd 
 
 ## What is a highly available (HA) control plane?
 
-An HA control plane is one with a topology that minimizes the time to recovery from a control plane failure, e.g., a kube-apiserver or etcd process crashing, or a network partition. Many HA topologies are designed to have a recovery time on the order of seconds. There are many possible topologies, but here are a few common ones:
+An HA control plane is one with a topology that minimizes the time to recovery from a control plane failure, e.g., a kube-apiserver or etcd process crashing, or a network partition. Many HA topologies are designed to have a recovery time on the order of seconds. There are many possible topologies, but most fall under these categories:
 
-### Multiple replicas, fixed identities and networked storage
+### Stacked etcd
+
+This topology co-locates the stateless (kube-apiserver, etc.) and stateful (etcd) components.
+
+Advantages include simplicity and lower costs for smaller clusters. With [etcd learners](https://etcd.io/docs/v3.3.12/learning/learner/), replicas need not be etcd members, but can become etcd members quickly, improving the time to recover from replica failure.
+
+### External etcd
+
+This topology separates the stateless and stateful components.
+
+Advantages include the ability to scale kube-apiserver to handle more requests without increasing the etcd cluster size, or to have an even number of kube-apiserver replicas. These advantages become less relevant when using [etcd learners](https://etcd.io/docs/v3.3.12/learning/learner/).
+
+For more information, see the [kubeadm HA topology docs](https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/ha-topology/).
+
+### Common topologies used in production
+
+#### A. Multiple replicas, stacked etcd, with dynamic identities and local storage
+
+ Each replica acquires a dynamic network identity and uses local etcd storage. This topology requires the etcd cluster to be reconfigured as replicas are added, deleted, or fail. The [Cluster API AWS Provider](sigs.k8s.io/cluster-api-provider-aws/) uses this topology, as do many other Cluster API providers.
+
+#### B. Multiple replicas, stacked etcd, fixed identities, networked storage
 
 Each replica acquires one in set of fixed network identities and networked volumes for etcd state. This topology assumes networked storage and an API to reassign fixed network identities to IPs (e.g. using DNS SRV records), and a common API endpoint. The [kops](https://github.com/kubernetes/kops) project uses this topology.
 
-### Multiple replicas, with dynamic identities and local storage
+#### C. Multiple replicas, external etcd, with dynamic identities
 
- Each replica acquires a dynamic network identity and uses local etcd storage. This topology assumes a common API endpoint. The [Cluster API AWS Provider](sigs.k8s.io/cluster-api-provider-aws/) uses this topology, as do many other providers.
+Each replica acquires a dynamic network identity. Storage is not relevant, because the etcd cluster is external. The [CoreOS Tectonic](https://coreos.com/tectonic/docs/latest/troubleshooting/etcd-nodes.html) product used this topology, and there is at least [one example](https://banzaicloud.com/blog/etcd-multi/) of a product sharing one external etcd cluster among multiple Kubernetes control planes.
 
-### Single replica, with fixed identity and networked storage
+#### D. Single replica, stacked or external etcd, with fixed identity and networked storage
 
-The replica acquires a fixed network identity and a networked volume for etcd storage. This topology assumes networked storage and the ability to detect a failure, start a new replica, and mount a volume, all within a few seconds. It is only practical for Pod-based (or equivalent) control planes. To handle more API requests, it's possible to use multiple kube-apiserver replicas while using a single etcd replica. Note that the single copy of etcd state--even with replicated storage--can be destroyed by corruption at the application or filesystem level. This is is the topology used by the [Gardener](https://gardener.cloud) project.
+The replica acquires a fixed network identity and a networked volume for etcd storage. This topology assumes networked storage and the ability to detect a failure, start a new replica, and mount a volume, all within a few seconds. It is only practical for Pod-based (or equivalent) control planes. Note that the single copy of etcd state--even with replicated storage--can be destroyed by corruption at the application or filesystem level. This is is the topology used by GKE "Zonal clusters" (i.e. clusters in a single availability zone), and the [Gardener](https://gardener.cloud) project.
 
 ### Common features of HA control planes
 
@@ -38,9 +58,7 @@ An alternative to the fixed API endpoint is a fixed endpoint for a source of tru
 
 Either way, there needs to be some fixed endpoint.
 
-Related: The [Load Balancer Provider CAEP](https://docs.google.com/document/d/17Z_F_lmv4WgXaG9TaayOwwpCGRRoBxLbY070TSXDhvs/edit) draft.
-
-<!-- 2. Etcd cluster. This ensures that etcd is not a single point of failure. In practice, etcd replicas are either co-located with kube-apiserver replicas (sometimes referred to as "stacked etcd"), or are located outside of the Kubernetes cluster ("external etcd"). -->
+For a more detailed discussion, see the [Load Balancer Provider CAEP](https://docs.google.com/document/d/17Z_F_lmv4WgXaG9TaayOwwpCGRRoBxLbY070TSXDhvs/edit) draft.
 
 ## How are Kubernetes control planes deployed?
 
@@ -69,6 +87,8 @@ Here's an end-to-end example that covers the possible lifecycle events:
 1. To support a newer version of Kubernetes, each control plane replica is replaced, in a rolling sequence, by a control plane replica with newer packages. (In practice, replicas can be upgraded in place, but Cluster API has decided to support replace upgrades only.)
 1. The control plane is deleted.
 
+Let's look in more detail at each event. For simplicitly, the following assumes topology A.
+
 ### Create
 
 1. Create a fixed API endpoint.
@@ -90,7 +110,10 @@ Here's an end-to-end example that covers the possible lifecycle events:
 
 ### Repair
 
-1.
+1. For each failed replica:
+    1. Using the etcd membership API, remove the etcd member corresponding to the replica.
+    1. Remove the replica from the fixed API endpoint metadata.
+    2. Delete the replica, if necessary.
 
 ### Upgrade
 
