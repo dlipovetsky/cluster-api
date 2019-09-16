@@ -1,5 +1,31 @@
 # Control Plane Management
 
+- [What is the Kubernetes control plane?](#what-is-the-kubernetes-control-plane)
+  - [Where is the control plane state?](#where-is-the-control-plane-state)
+- [What is a highly available (HA) control plane?](#what-is-a-highly-available-ha-control-plane)
+  - [Stacked etcd](#stacked-etcd)
+  - [External etcd](#external-etcd)
+  - [Common topologies used in production](#common-topologies-used-in-production)
+    - [A. Multiple replicas, stacked etcd, with dynamic identities and local storage](#a-multiple-replicas-stacked-etcd-with-dynamic-identities-and-local-storage)
+    - [B. Multiple replicas, stacked etcd, fixed identities, networked storage](#b-multiple-replicas-stacked-etcd-fixed-identities-networked-storage)
+    - [C. Multiple replicas, external etcd, with dynamic identities](#c-multiple-replicas-external-etcd-with-dynamic-identities)
+    - [D. Single replica, stacked or external etcd, with fixed identity and networked storage](#d-single-replica-stacked-or-external-etcd-with-fixed-identity-and-networked-storage)
+  - [Common features of HA control planes](#common-features-of-ha-control-planes)
+    - [Fixed API Endpoint](#fixed-api-endpoint)
+- [How are Kubernetes control planes deployed?](#how-are-kubernetes-control-planes-deployed)
+  - [Machine-based](#machine-based)
+  - [Pod-based](#pod-based)
+  - [Managed](#managed)
+- [What is the lifecycle of a control plane?](#what-is-the-lifecycle-of-a-control-plane)
+  - [Create](#create)
+  - [Scale Up](#scale-up)
+  - [Scale Down](#scale-down)
+  - [Repair](#repair)
+  - [Upgrade](#upgrade)
+  - [Delete](#delete)
+- [What is the state of control plane management in Cluster API?](#what-is-the-state-of-control-plane-management-in-cluster-api)
+- [What role should the Cluster API serve?](#what-role-should-the-cluster-api-serve)
+
 ## What is the Kubernetes control plane?
 
 The Kubernetes control plane is, at its core, kube-apiserver and etcd. If either of these are unavailable, no API requests can be handled. This impacts not only core Kubernetes APIs, but APIs implemented with CRDs. Other components, like kube-scheduler and kube-controller-manager, are also important, but do not have the same impact on availability.
@@ -20,7 +46,7 @@ An HA control plane is one with a topology that minimizes the time to recovery f
 
 This topology co-locates the stateless (kube-apiserver, etc.) and stateful (etcd) components.
 
-Advantages include simplicity and lower costs for smaller clusters. With [etcd learners](https://etcd.io/docs/v3.3.12/learning/learner/), replicas need not be etcd members, but can become etcd members quickly, improving the time to recover from replica failure.
+Advantages include simplicity, lower overhead for smaller clusters, and a fixed etcd endpoint (localhost) for kube-apiserver. With [etcd learners](https://etcd.io/docs/v3.3.12/learning/learner/), replicas need not be etcd members, but can become etcd members quickly, improving the time to recover from replica failure.
 
 ### External etcd
 
