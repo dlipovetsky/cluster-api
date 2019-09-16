@@ -87,7 +87,7 @@ Here's an end-to-end example that covers the possible lifecycle events:
 1. To support a newer version of Kubernetes, each control plane replica is replaced, in a rolling sequence, by a control plane replica with newer packages. (In practice, replicas can be upgraded in place, but Cluster API has decided to support replace upgrades only.)
 1. The control plane is deleted.
 
-Let's look in more detail at each event. For simplicitly, the following assumes topology A.
+Let's look in more detail at each event. For simplicitly, the following assumes topology A and a machine or pod-based control plane. Managed control planes can be created, scaled, upgraded, and deleted by the end user; failed replicas are repaired by the service responsible for the control plane.
 
 ### Create
 
