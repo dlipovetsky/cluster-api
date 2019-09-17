@@ -1,6 +1,7 @@
 # Control Plane Management
 
-- [Summary](#summary)
+The purpose of this document is to help ensure we have a common understanding of the control plane management problem when we discuss how Cluster API can address it. Most of the document explains the Kubernetes control plane in theory and in practice. It concludes with a view of control plane management in Cluster API today.
+
 - [What is the Kubernetes control plane?](#what-is-the-kubernetes-control-plane)
   - [Where is the control plane state?](#where-is-the-control-plane-state)
 - [What is a highly available (HA) control plane?](#what-is-a-highly-available-ha-control-plane)
@@ -28,10 +29,6 @@
   - [Restore control plane after complete outage](#restore-control-plane-after-complete-outage)
 - [What is the state of control plane management in Cluster API?](#what-is-the-state-of-control-plane-management-in-cluster-api)
 - [What control plane management events can Cluster API support?](#what-control-plane-management-events-can-cluster-api-support)
-
-## Summary
-
-The purpose of this document is to help ensure we have a common understanding of the control plane management problem when we discuss how Cluster API can address it. Most of the document explains the Kubernetes control plane in theory and in practice. It concludes with a view of control plane management in Cluster API today.
 
 ## What is the Kubernetes control plane?
 
