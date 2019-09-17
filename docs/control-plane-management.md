@@ -1,5 +1,6 @@
 # Control Plane Management
 
+- [Summary](#summary)
 - [What is the Kubernetes control plane?](#what-is-the-kubernetes-control-plane)
   - [Where is the control plane state?](#where-is-the-control-plane-state)
 - [What is a highly available (HA) control plane?](#what-is-a-highly-available-ha-control-plane)
@@ -20,11 +21,17 @@
   - [Create](#create)
   - [Scale Up](#scale-up)
   - [Scale Down](#scale-down)
-  - [Repair](#repair)
   - [Upgrade](#upgrade)
   - [Delete](#delete)
+  - [Repair partial outage](#repair-partial-outage)
+  - [Take backup of etcd state](#take-backup-of-etcd-state)
+  - [Restore control plane after complete outage](#restore-control-plane-after-complete-outage)
 - [What is the state of control plane management in Cluster API?](#what-is-the-state-of-control-plane-management-in-cluster-api)
-- [What role should the Cluster API serve?](#what-role-should-the-cluster-api-serve)
+- [What control plane management events can Cluster API support?](#what-control-plane-management-events-can-cluster-api-support)
+
+## Summary
+
+The purpose of this document is to help ensure we have a common understanding of the control plane management problem when we discuss how Cluster API can address it. Most of the document explains the Kubernetes control plane in theory and in practice. It concludes with a view of control plane management in Cluster API today.
 
 ## What is the Kubernetes control plane?
 
@@ -134,13 +141,6 @@ Let's look in more detail at each event. For simplicity, the following assumes t
     1. Remove the replica from the fixed API endpoint metadata.
     2. Delete the replica.
 
-### Repair
-
-1. For each failed replica:
-    1. Using the etcd membership API, remove the etcd member corresponding to the replica.
-    1. Remove the replica from the fixed API endpoint metadata.
-    2. Delete the replica, if necessary.
-
 ### Upgrade
 
 1. For each replica to be upgraded:
@@ -153,3 +153,42 @@ Let's look in more detail at each event. For simplicity, the following assumes t
    1. Remove the replica from the fixed API endpoint metadata.
    2. Delete the replica.
 2. Delete the fixed API endpoint.
+
+### Repair partial outage
+
+1. For each failed replica:
+    1. Using the etcd membership API, remove the etcd member corresponding to the replica.
+    1. Remove the replica from the fixed API endpoint metadata.
+    2. Delete the replica, if necessary.
+
+### Take backup of etcd state
+
+1. For one replica:
+    1. Using the etcd snapshot API, take a snapshot
+    2. Store the snapshot in a well-known location
+
+### Restore control plane after complete outage
+
+1. Obtain etcd state from an etcd snapshot, or from the disk of an existing replica.
+1. For each existing replica:
+    1. Remove the replicas from the fixed API endpoint metadata.
+    2. Delete the replica.
+1. For the first new replica:
+    1. Create the replica.
+    1. Initialize etcd with etcd state
+    2. Add the replica to the fixed API endpoint metadata.
+1. For each additional new replica:
+    1. Create the replica.
+    1. Add the replica to the fixed API endpoint metadata.
+
+## What is the state of control plane management in Cluster API?
+
+Initially, all providers deployed a single control plane replica. Some providers now deploy multiple control plane replicas. From the point of view of Cluster API controllers, each control plane replica is independent.
+
+Providers rely on kubeadm to deploy multiple control plane replicas. The providers only need to wait for the first control plane replica to be available before deploying the others. For example, when that replica is ready, the provider annotates the Cluster object.
+
+The Cluster API controllers have no logic for the managing control plane.
+
+## What control plane management events can Cluster API support?
+
+When the "management" and "workload" clusters are separate, Cluster API can support any of the control plane lifecycle events above. When they are the same, then Cluster API will be unavailable whenever the control plane is unavailable. In that case, Cluster API will be unable to restore the control plane after a complete outage, but it should be able to support everything else.
