@@ -249,12 +249,42 @@ func (r *KubeadmControlPlaneReconciler) reconcile(ctx context.Context, kcp *cont
 	// scaling down
 	case numMachines > desiredReplicas:
 		logger.Info("Scaling down", "Desired Replicas", desiredReplicas, "Existing Replicas", numMachines)
-		err := errors.New("Not Implemented")
-		logger.Error(err, "Should delete the appropriate Machine here.")
-		return ctrl.Result{}, err
+		surplusMachines := numMachines - desiredReplicas
+		if err := r.scaleDownControlPlane(ctx, cluster, kcp, ownedMachines, surplusMachines); err != nil {
+			logger.Error(err, "Failed to scale down the Control Plane")
+			r.recorder.Eventf(kcp, corev1.EventTypeWarning, "FailedScaleDown", "Failed to scale down the control plane: %v", err)
+			return ctrl.Result{}, err
+		}
 	}
-
 	return ctrl.Result{}, nil
+}
+
+func (r *KubeadmControlPlaneReconciler) scaleDownControlPlane(ctx context.Context, cluster *clusterv1.Cluster, kcp *controlplanev1.KubeadmControlPlane, machines []*clusterv1.Machine, numMachines int) error {
+	if numMachines < 1 {
+		return fmt.Errorf("number of machines to scale down is zero")
+	}
+	victim := r.chooseVictimMachine(machines)
+	// remove replica's etcd member from cluster
+	/*
+
+		/bin/sh -c "ETCDCTL_API=3 \
+		/usr/local/bin/etcdctl \
+		--cert=/etc/kubernetes/pki/etcd/healthcheck-client.crt \
+		--key=/etc/kubernetes/pki/etcd/healthcheck-client.key \
+		--cacert=/etc/kubernetes/pki/etcd/ca.crt \
+		--endpoints=https://127.0.0.1:2379
+		endpoint health"
+
+	*/
+	// update kubeadm generated config map
+	return nil
+}
+
+func (r *KubeadmControlPlaneReconciler) chooseVictimMachine(machines []*clusterv1.Machine) *clusterv1.Machine {
+	if len(machines) > 0 {
+		return machines[0]
+	}
+	return nil
 }
 
 func (r *KubeadmControlPlaneReconciler) updateStatus(ctx context.Context, kcp *controlplanev1.KubeadmControlPlane, cluster *clusterv1.Cluster) error {
