@@ -52,10 +52,7 @@ import (
 
 func TestClusterToKubeadmControlPlane(t *testing.T) {
 	g := NewWithT(t)
-	g.Expect(clusterv1.AddToScheme(scheme.Scheme)).To(Succeed())
-	g.Expect(bootstrapv1.AddToScheme(scheme.Scheme)).To(Succeed())
-	g.Expect(controlplanev1.AddToScheme(scheme.Scheme)).To(Succeed())
-	fakeClient := fake.NewFakeClientWithScheme(scheme.Scheme)
+	fakeClient := newFakeClient(g)
 
 	cluster := &clusterv1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{
@@ -96,10 +93,7 @@ func TestClusterToKubeadmControlPlane(t *testing.T) {
 
 func TestClusterToKubeadmControlPlaneNoControlPlane(t *testing.T) {
 	g := NewWithT(t)
-	g.Expect(clusterv1.AddToScheme(scheme.Scheme)).To(Succeed())
-	g.Expect(bootstrapv1.AddToScheme(scheme.Scheme)).To(Succeed())
-	g.Expect(controlplanev1.AddToScheme(scheme.Scheme)).To(Succeed())
-	fakeClient := fake.NewFakeClientWithScheme(scheme.Scheme)
+	fakeClient := newFakeClient(g)
 
 	cluster := &clusterv1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{
@@ -125,10 +119,7 @@ func TestClusterToKubeadmControlPlaneNoControlPlane(t *testing.T) {
 
 func TestClusterToKubeadmControlPlaneOtherControlPlane(t *testing.T) {
 	g := NewWithT(t)
-	g.Expect(clusterv1.AddToScheme(scheme.Scheme)).To(Succeed())
-	g.Expect(bootstrapv1.AddToScheme(scheme.Scheme)).To(Succeed())
-	g.Expect(controlplanev1.AddToScheme(scheme.Scheme)).To(Succeed())
-	fakeClient := fake.NewFakeClientWithScheme(scheme.Scheme)
+	fakeClient := newFakeClient(g)
 
 	cluster := &clusterv1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{
@@ -170,10 +161,7 @@ func TestReconcileKubeconfigEmptyAPIEndpoints(t *testing.T) {
 	}
 	clusterName := types.NamespacedName{Namespace: "test", Name: "foo"}
 
-	g.Expect(clusterv1.AddToScheme(scheme.Scheme)).To(Succeed())
-	g.Expect(bootstrapv1.AddToScheme(scheme.Scheme)).To(Succeed())
-	g.Expect(controlplanev1.AddToScheme(scheme.Scheme)).To(Succeed())
-	fakeClient := fake.NewFakeClientWithScheme(scheme.Scheme, kcp)
+	fakeClient := newFakeClient(g, kcp.DeepCopy())
 	r := &KubeadmControlPlaneReconciler{
 		Client: fakeClient,
 		Log:    log.Log,
@@ -201,10 +189,7 @@ func TestReconcileKubeconfigMissingCACertificate(t *testing.T) {
 	clusterName := types.NamespacedName{Namespace: "test", Name: "foo"}
 	endpoint := clusterv1.APIEndpoint{Host: "test.local", Port: 8443}
 
-	g.Expect(clusterv1.AddToScheme(scheme.Scheme)).To(Succeed())
-	g.Expect(bootstrapv1.AddToScheme(scheme.Scheme)).To(Succeed())
-	g.Expect(controlplanev1.AddToScheme(scheme.Scheme)).To(Succeed())
-	fakeClient := fake.NewFakeClientWithScheme(scheme.Scheme, kcp)
+	fakeClient := newFakeClient(g, kcp.DeepCopy())
 	r := &KubeadmControlPlaneReconciler{
 		Client: fakeClient,
 		Log:    log.Log,
@@ -245,10 +230,7 @@ func TestReconcileKubeconfigSecretAlreadyExists(t *testing.T) {
 		*metav1.NewControllerRef(cluster, clusterv1.GroupVersion.WithKind("Cluster")),
 	)
 
-	g.Expect(clusterv1.AddToScheme(scheme.Scheme)).To(Succeed())
-	g.Expect(bootstrapv1.AddToScheme(scheme.Scheme)).To(Succeed())
-	g.Expect(controlplanev1.AddToScheme(scheme.Scheme)).To(Succeed())
-	fakeClient := fake.NewFakeClientWithScheme(scheme.Scheme, kcp, existingKubeconfigSecret)
+	fakeClient := newFakeClient(g, kcp.DeepCopy(), existingKubeconfigSecret.DeepCopy())
 	r := &KubeadmControlPlaneReconciler{
 		Client: fakeClient,
 		Log:    log.Log,
@@ -295,10 +277,7 @@ func TestKubeadmControlPlaneReconciler_reconcileKubeconfig(t *testing.T) {
 		*metav1.NewControllerRef(kcp, controlplanev1.GroupVersion.WithKind("KubeadmControlPlane")),
 	)
 
-	g.Expect(clusterv1.AddToScheme(scheme.Scheme)).To(Succeed())
-	g.Expect(bootstrapv1.AddToScheme(scheme.Scheme)).To(Succeed())
-	g.Expect(controlplanev1.AddToScheme(scheme.Scheme)).To(Succeed())
-	fakeClient := fake.NewFakeClientWithScheme(scheme.Scheme, kcp, existingCACertSecret)
+	fakeClient := newFakeClient(g, kcp.DeepCopy(), existingCACertSecret.DeepCopy())
 	r := &KubeadmControlPlaneReconciler{
 		Client: fakeClient,
 		Log:    log.Log,
@@ -319,63 +298,9 @@ func TestKubeadmControlPlaneReconciler_reconcileKubeconfig(t *testing.T) {
 func TestKubeadmControlPlaneReconciler_initializeControlPlane(t *testing.T) {
 	g := NewWithT(t)
 
-	cluster := &clusterv1.Cluster{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "foo",
-			Namespace: "test",
-		},
-		Spec: clusterv1.ClusterSpec{
-			ControlPlaneRef: &corev1.ObjectReference{
-				Kind:       "KubeadmControlPlane",
-				Namespace:  "test",
-				Name:       "kcp-foo",
-				APIVersion: controlplanev1.GroupVersion.String(),
-			},
-		},
-	}
+	cluster, kcp, genericMachineTemplate := createClusterWithControlPlane()
 
-	kcp := &controlplanev1.KubeadmControlPlane{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "kcp-foo",
-			Namespace: cluster.Namespace,
-		},
-		Spec: controlplanev1.KubeadmControlPlaneSpec{
-			InfrastructureTemplate: corev1.ObjectReference{
-				Kind:       "GenericMachineTemplate",
-				Namespace:  "test",
-				Name:       "infra-foo",
-				APIVersion: "generic.io/v1",
-			},
-		},
-	}
-
-	genericMachineTemplate := &unstructured.Unstructured{
-		Object: map[string]interface{}{
-			"kind":       "GenericMachineTemplate",
-			"apiVersion": "generic.io/v1",
-			"metadata": map[string]interface{}{
-				"name":      "infra-foo",
-				"namespace": "test",
-			},
-			"spec": map[string]interface{}{
-				"template": map[string]interface{}{
-					"spec": map[string]interface{}{
-						"hello": "world",
-					},
-				},
-			},
-		},
-	}
-
-	g.Expect(clusterv1.AddToScheme(scheme.Scheme)).To(Succeed())
-	g.Expect(bootstrapv1.AddToScheme(scheme.Scheme)).To(Succeed())
-	g.Expect(controlplanev1.AddToScheme(scheme.Scheme)).To(Succeed())
-	fakeClient := fake.NewFakeClientWithScheme(
-		scheme.Scheme,
-		cluster.DeepCopy(),
-		kcp.DeepCopy(),
-		genericMachineTemplate.DeepCopy(),
-	)
+	fakeClient := newFakeClient(g, cluster.DeepCopy(), kcp.DeepCopy(), genericMachineTemplate.DeepCopy())
 
 	r := &KubeadmControlPlaneReconciler{
 		Client: fakeClient,
@@ -417,10 +342,7 @@ func TestReconcileNoClusterOwnerRef(t *testing.T) {
 	kcp.Default()
 	g.Expect(kcp.ValidateCreate()).To(Succeed())
 
-	g.Expect(clusterv1.AddToScheme(scheme.Scheme)).To(Succeed())
-	g.Expect(bootstrapv1.AddToScheme(scheme.Scheme)).To(Succeed())
-	g.Expect(controlplanev1.AddToScheme(scheme.Scheme)).To(Succeed())
-	fakeClient := fake.NewFakeClientWithScheme(scheme.Scheme, kcp)
+	fakeClient := newFakeClient(g, kcp.DeepCopy())
 	log.SetLogger(klogr.New())
 
 	r := &KubeadmControlPlaneReconciler{
@@ -456,10 +378,7 @@ func TestReconcileNoCluster(t *testing.T) {
 	kcp.Default()
 	g.Expect(kcp.ValidateCreate()).To(Succeed())
 
-	g.Expect(clusterv1.AddToScheme(scheme.Scheme)).To(Succeed())
-	g.Expect(bootstrapv1.AddToScheme(scheme.Scheme)).To(Succeed())
-	g.Expect(controlplanev1.AddToScheme(scheme.Scheme)).To(Succeed())
-	fakeClient := fake.NewFakeClientWithScheme(scheme.Scheme, kcp)
+	fakeClient := newFakeClient(g, kcp.DeepCopy())
 	log.SetLogger(klogr.New())
 
 	r := &KubeadmControlPlaneReconciler{
@@ -504,10 +423,7 @@ func TestReconcileClusterNoEndpoints(t *testing.T) {
 	kcp.Default()
 	g.Expect(kcp.ValidateCreate()).To(Succeed())
 
-	g.Expect(clusterv1.AddToScheme(scheme.Scheme)).To(Succeed())
-	g.Expect(bootstrapv1.AddToScheme(scheme.Scheme)).To(Succeed())
-	g.Expect(controlplanev1.AddToScheme(scheme.Scheme)).To(Succeed())
-	fakeClient := fake.NewFakeClientWithScheme(scheme.Scheme, kcp, cluster)
+	fakeClient := newFakeClient(g, kcp.DeepCopy(), cluster.DeepCopy())
 	log.SetLogger(klogr.New())
 
 	r := &KubeadmControlPlaneReconciler{
@@ -598,15 +514,7 @@ func TestReconcileInitializeControlPlane(t *testing.T) {
 	kcp.Default()
 	g.Expect(kcp.ValidateCreate()).To(Succeed())
 
-	g.Expect(clusterv1.AddToScheme(scheme.Scheme)).To(Succeed())
-	g.Expect(bootstrapv1.AddToScheme(scheme.Scheme)).To(Succeed())
-	g.Expect(controlplanev1.AddToScheme(scheme.Scheme)).To(Succeed())
-	fakeClient := fake.NewFakeClientWithScheme(
-		scheme.Scheme,
-		kcp.DeepCopy(),
-		cluster.DeepCopy(),
-		genericMachineTemplate.DeepCopy(),
-	)
+	fakeClient := newFakeClient(g, kcp.DeepCopy(), cluster.DeepCopy(), genericMachineTemplate.DeepCopy())
 	log.SetLogger(klogr.New())
 
 	expectedLabels := map[string]string{clusterv1.ClusterLabelName: "foo"}
@@ -658,8 +566,7 @@ func TestReconcileInitializeControlPlane(t *testing.T) {
 
 func TestKubeadmControlPlaneReconciler_generateMachine(t *testing.T) {
 	g := NewWithT(t)
-	g.Expect(clusterv1.AddToScheme(scheme.Scheme)).To(Succeed())
-	fakeClient := fake.NewFakeClientWithScheme(scheme.Scheme)
+	fakeClient := newFakeClient(g)
 
 	cluster := &clusterv1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{
@@ -720,8 +627,7 @@ func TestKubeadmControlPlaneReconciler_generateMachine(t *testing.T) {
 
 func TestKubeadmControlPlaneReconciler_generateKubeadmConfig(t *testing.T) {
 	g := NewWithT(t)
-	g.Expect(bootstrapv1.AddToScheme(scheme.Scheme)).To(Succeed())
-	fakeClient := fake.NewFakeClientWithScheme(scheme.Scheme)
+	fakeClient := newFakeClient(g)
 
 	cluster := &clusterv1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{
@@ -771,7 +677,7 @@ func TestKubeadmControlPlaneReconciler_generateKubeadmConfig(t *testing.T) {
 func Test_getMachineNodeNoNodeRef(t *testing.T) {
 	g := NewWithT(t)
 
-	fakeClient := fake.NewFakeClientWithScheme(scheme.Scheme)
+	fakeClient := newFakeClient(g)
 
 	m := &clusterv1.Machine{}
 	node, err := getMachineNode(context.Background(), fakeClient, m)
@@ -782,7 +688,7 @@ func Test_getMachineNodeNoNodeRef(t *testing.T) {
 func Test_getMachineNodeNotFound(t *testing.T) {
 	g := NewWithT(t)
 
-	fakeClient := fake.NewFakeClientWithScheme(scheme.Scheme)
+	fakeClient := newFakeClient(g)
 
 	m := &clusterv1.Machine{
 		Status: clusterv1.MachineStatus{
@@ -806,7 +712,7 @@ func Test_getMachineNodeFound(t *testing.T) {
 			Name: "testNode",
 		},
 	}
-	fakeClient := fake.NewFakeClientWithScheme(scheme.Scheme, node.DeepCopy())
+	fakeClient := newFakeClient(g, node.DeepCopy())
 
 	m := &clusterv1.Machine{
 		Status: clusterv1.MachineStatus{
@@ -841,10 +747,7 @@ func TestKubeadmControlPlaneReconciler_updateStatusNoMachines(t *testing.T) {
 	kcp.Default()
 	g.Expect(kcp.ValidateCreate()).To(Succeed())
 
-	g.Expect(clusterv1.AddToScheme(scheme.Scheme)).To(Succeed())
-	g.Expect(bootstrapv1.AddToScheme(scheme.Scheme)).To(Succeed())
-	g.Expect(controlplanev1.AddToScheme(scheme.Scheme)).To(Succeed())
-	fakeClient := fake.NewFakeClientWithScheme(scheme.Scheme, kcp, cluster)
+	fakeClient := newFakeClient(g, kcp.DeepCopy(), cluster.DeepCopy())
 	log.SetLogger(klogr.New())
 
 	r := &KubeadmControlPlaneReconciler{
@@ -930,10 +833,7 @@ func TestKubeadmControlPlaneReconciler_updateStatusAllMachinesNotReady(t *testin
 		objs = append(objs, m, n)
 	}
 
-	g.Expect(clusterv1.AddToScheme(scheme.Scheme)).To(Succeed())
-	g.Expect(bootstrapv1.AddToScheme(scheme.Scheme)).To(Succeed())
-	g.Expect(controlplanev1.AddToScheme(scheme.Scheme)).To(Succeed())
-	fakeClient := fake.NewFakeClientWithScheme(scheme.Scheme, objs...)
+	fakeClient := newFakeClient(g, objs...)
 	log.SetLogger(klogr.New())
 
 	r := &KubeadmControlPlaneReconciler{
@@ -981,10 +881,7 @@ func TestKubeadmControlPlaneReconciler_updateStatusAllMachinesReady(t *testing.T
 		objs = append(objs, m, n)
 	}
 
-	g.Expect(clusterv1.AddToScheme(scheme.Scheme)).To(Succeed())
-	g.Expect(bootstrapv1.AddToScheme(scheme.Scheme)).To(Succeed())
-	g.Expect(controlplanev1.AddToScheme(scheme.Scheme)).To(Succeed())
-	fakeClient := fake.NewFakeClientWithScheme(scheme.Scheme, objs...)
+	fakeClient := newFakeClient(g, objs...)
 	log.SetLogger(klogr.New())
 
 	r := &KubeadmControlPlaneReconciler{
@@ -1036,10 +933,7 @@ func TestKubeadmControlPlaneReconciler_updateStatusMachinesReadyMixed(t *testing
 	m, n := createMachineNodePair("testReady", cluster, kcp, true)
 	objs = append(objs, m, n)
 
-	g.Expect(clusterv1.AddToScheme(scheme.Scheme)).To(Succeed())
-	g.Expect(bootstrapv1.AddToScheme(scheme.Scheme)).To(Succeed())
-	g.Expect(controlplanev1.AddToScheme(scheme.Scheme)).To(Succeed())
-	fakeClient := fake.NewFakeClientWithScheme(scheme.Scheme, objs...)
+	fakeClient := newFakeClient(g, objs...)
 	log.SetLogger(klogr.New())
 
 	r := &KubeadmControlPlaneReconciler{
@@ -1106,15 +1000,7 @@ func TestCloneConfigsAndGenerateMachine(t *testing.T) {
 		},
 	}
 
-	g.Expect(clusterv1.AddToScheme(scheme.Scheme)).To(Succeed())
-	g.Expect(bootstrapv1.AddToScheme(scheme.Scheme)).To(Succeed())
-	g.Expect(controlplanev1.AddToScheme(scheme.Scheme)).To(Succeed())
-	fakeClient := fake.NewFakeClientWithScheme(
-		scheme.Scheme,
-		cluster.DeepCopy(),
-		kcp.DeepCopy(),
-		genericMachineTemplate.DeepCopy(),
-	)
+	fakeClient := newFakeClient(g, cluster.DeepCopy(), kcp.DeepCopy(), genericMachineTemplate.DeepCopy())
 
 	r := &KubeadmControlPlaneReconciler{
 		Client:   fakeClient,
@@ -1201,34 +1087,27 @@ func createClusterWithControlPlane() (*clusterv1.Cluster, *controlplanev1.Kubead
 	return cluster, kcp, genericMachineTemplate
 }
 
-func fakeClient() (client.Client, error) {
-	if err := clusterv1.AddToScheme(scheme.Scheme); err != nil {
-		return nil, err
-	}
-	if err := bootstrapv1.AddToScheme(scheme.Scheme); err != nil {
-		return nil, err
-	}
-	if err := controlplanev1.AddToScheme(scheme.Scheme); err != nil {
-		return nil, err
-	}
-	fakeClient := fake.NewFakeClientWithScheme(scheme.Scheme)
-	return fakeClient, nil
+func newFakeClient(g *WithT, initObjs ...runtime.Object) client.Client {
+	g.Expect(clusterv1.AddToScheme(scheme.Scheme)).To(Succeed())
+	g.Expect(bootstrapv1.AddToScheme(scheme.Scheme)).To(Succeed())
+	g.Expect(controlplanev1.AddToScheme(scheme.Scheme)).To(Succeed())
+	return fake.NewFakeClientWithScheme(scheme.Scheme, initObjs...)
 }
 
 func TestKubeadmControlPlaneReconciler_reconcileDelete(t *testing.T) {
 	t.Run("removes all control plane Machines", func(t *testing.T) {
 		g := NewWithT(t)
 
-		fakeClient, err := fakeClient()
-		g.Expect(err).NotTo(HaveOccurred())
-
 		cluster, kcp, _ := createClusterWithControlPlane()
 		controllerutil.AddFinalizer(kcp, controlplanev1.KubeadmControlPlaneFinalizer)
+		initObjs := []runtime.Object{cluster.DeepCopy(), kcp.DeepCopy()}
 
 		for i := 0; i < 3; i++ {
 			m, _ := createMachineNodePair(fmt.Sprintf("test-%d", i), cluster, kcp, true)
-			g.Expect(fakeClient.Create(context.Background(), m)).To(Succeed())
+			initObjs = append(initObjs, m)
 		}
+
+		fakeClient := newFakeClient(g, initObjs...)
 
 		r := &KubeadmControlPlaneReconciler{
 			Client:            fakeClient,
@@ -1253,16 +1132,8 @@ func TestKubeadmControlPlaneReconciler_reconcileDelete(t *testing.T) {
 	t.Run("does not remove any control plane Machines if other Machines exist", func(t *testing.T) {
 		g := NewWithT(t)
 
-		fakeClient, err := fakeClient()
-		g.Expect(err).NotTo(HaveOccurred())
-
 		cluster, kcp, _ := createClusterWithControlPlane()
 		controllerutil.AddFinalizer(kcp, controlplanev1.KubeadmControlPlaneFinalizer)
-
-		for i := 0; i < 3; i++ {
-			m, _ := createMachineNodePair(fmt.Sprintf("test-%d", i), cluster, kcp, true)
-			g.Expect(fakeClient.Create(context.Background(), m)).To(Succeed())
-		}
 
 		workerMachine := &clusterv1.Machine{
 			ObjectMeta: metav1.ObjectMeta{
@@ -1273,7 +1144,15 @@ func TestKubeadmControlPlaneReconciler_reconcileDelete(t *testing.T) {
 				},
 			},
 		}
-		g.Expect(fakeClient.Create(context.Background(), workerMachine)).To(Succeed())
+
+		initObjs := []runtime.Object{cluster.DeepCopy(), kcp.DeepCopy(), workerMachine.DeepCopy()}
+
+		for i := 0; i < 3; i++ {
+			m, _ := createMachineNodePair(fmt.Sprintf("test-%d", i), cluster, kcp, true)
+			initObjs = append(initObjs, m)
+		}
+
+		fakeClient := newFakeClient(g, initObjs...)
 
 		r := &KubeadmControlPlaneReconciler{
 			Client:            fakeClient,
@@ -1296,11 +1175,10 @@ func TestKubeadmControlPlaneReconciler_reconcileDelete(t *testing.T) {
 	t.Run("removes the finalizer if no control plane Machines exist", func(t *testing.T) {
 		g := NewWithT(t)
 
-		fakeClient, err := fakeClient()
-		g.Expect(err).NotTo(HaveOccurred())
-
 		cluster, kcp, _ := createClusterWithControlPlane()
 		controllerutil.AddFinalizer(kcp, controlplanev1.KubeadmControlPlaneFinalizer)
+
+		fakeClient := newFakeClient(g, cluster.DeepCopy(), kcp.DeepCopy())
 
 		r := &KubeadmControlPlaneReconciler{
 			Client:            fakeClient,
@@ -1343,11 +1221,8 @@ func TestKubeadmControlPlaneReconciler_scaleUpControlPlane(t *testing.T) {
 	t.Run("creates a control plane Machine if health checks pass", func(t *testing.T) {
 		g := NewWithT(t)
 
-		fakeClient, err := fakeClient()
-		g.Expect(err).NotTo(HaveOccurred())
-
 		cluster, kcp, genericMachineTemplate := createClusterWithControlPlane()
-		g.Expect(fakeClient.Create(context.Background(), genericMachineTemplate)).To(Succeed())
+		initObjs := []runtime.Object{cluster.DeepCopy(), kcp.DeepCopy(), genericMachineTemplate.DeepCopy()}
 
 		fmc := &fakeManagementCluster{
 			Machines:            []*clusterv1.Machine{},
@@ -1357,9 +1232,11 @@ func TestKubeadmControlPlaneReconciler_scaleUpControlPlane(t *testing.T) {
 
 		for i := 0; i < 2; i++ {
 			m, _ := createMachineNodePair(fmt.Sprintf("test-%d", i), cluster, kcp, true)
-			g.Expect(fakeClient.Create(context.Background(), m)).To(Succeed())
 			fmc.Machines = append(fmc.Machines, m)
+			initObjs = append(initObjs, m.DeepCopy())
 		}
+
+		fakeClient := newFakeClient(g, initObjs...)
 
 		r := &KubeadmControlPlaneReconciler{
 			Client:            fakeClient,
@@ -1402,11 +1279,8 @@ func TestKubeadmControlPlaneReconciler_scaleDownControlPlane(t *testing.T) {
 	t.Run("deletes a control plane Machine if health checks pass", func(t *testing.T) {
 		g := NewWithT(t)
 
-		fakeClient, err := fakeClient()
-		g.Expect(err).NotTo(HaveOccurred())
-
 		cluster, kcp, genericMachineTemplate := createClusterWithControlPlane()
-		g.Expect(fakeClient.Create(context.Background(), genericMachineTemplate)).To(Succeed())
+		initObjs := []runtime.Object{cluster.DeepCopy(), kcp.DeepCopy(), genericMachineTemplate.DeepCopy()}
 
 		fmc := &fakeManagementCluster{
 			Machines:            []*clusterv1.Machine{},
@@ -1416,9 +1290,11 @@ func TestKubeadmControlPlaneReconciler_scaleDownControlPlane(t *testing.T) {
 
 		for i := 0; i < 2; i++ {
 			m, _ := createMachineNodePair(fmt.Sprintf("test-%d", i), cluster, kcp, true)
-			g.Expect(fakeClient.Create(context.Background(), m)).To(Succeed())
 			fmc.Machines = append(fmc.Machines, m)
+			initObjs = append(initObjs, m.DeepCopy())
 		}
+
+		fakeClient := newFakeClient(g, initObjs...)
 
 		r := &KubeadmControlPlaneReconciler{
 			Client:            fakeClient,
@@ -1438,11 +1314,8 @@ func TestKubeadmControlPlaneReconciler_scaleDownControlPlane(t *testing.T) {
 	t.Run("does not delete a control plane Machine if health checks fail", func(t *testing.T) {
 		g := NewWithT(t)
 
-		fakeClient, err := fakeClient()
-		g.Expect(err).NotTo(HaveOccurred())
-
 		cluster, kcp, genericMachineTemplate := createClusterWithControlPlane()
-		g.Expect(fakeClient.Create(context.Background(), genericMachineTemplate)).To(Succeed())
+		initObjs := []runtime.Object{cluster.DeepCopy(), kcp.DeepCopy(), genericMachineTemplate.DeepCopy()}
 
 		fmc := &fakeManagementCluster{
 			Machines:            []*clusterv1.Machine{},
@@ -1452,9 +1325,11 @@ func TestKubeadmControlPlaneReconciler_scaleDownControlPlane(t *testing.T) {
 
 		for i := 0; i < 2; i++ {
 			m, _ := createMachineNodePair(fmt.Sprintf("test-%d", i), cluster, kcp, true)
-			g.Expect(fakeClient.Create(context.Background(), m)).To(Succeed())
 			fmc.Machines = append(fmc.Machines, m)
+			initObjs = append(initObjs, m.DeepCopy())
 		}
+
+		fakeClient := newFakeClient(g, initObjs...)
 
 		r := &KubeadmControlPlaneReconciler{
 			Client:            fakeClient,
