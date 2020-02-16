@@ -70,6 +70,7 @@ type managementCluster interface {
 	GetMachinesForCluster(ctx context.Context, cluster types.NamespacedName, filters ...func(machine *clusterv1.Machine) bool) ([]*clusterv1.Machine, error)
 	TargetClusterControlPlaneIsHealthy(ctx context.Context, clusterKey types.NamespacedName, controlPlaneName string) error
 	TargetClusterEtcdIsHealthy(ctx context.Context, clusterKey types.NamespacedName, controlPlaneName string) error
+	RemoveEtcdMemberForMachine(ctx context.Context, clusterKey types.NamespacedName, machine *clusterv1.Machine) error
 }
 
 // +kubebuilder:rbac:groups=core,resources=events,verbs=get;list;watch;create;patch
@@ -248,9 +249,8 @@ func (r *KubeadmControlPlaneReconciler) reconcile(ctx context.Context, cluster *
 		return r.upgradeControlPlane(ctx, cluster, kcp, logger)
 	}
 
-	// If we've made it this far, we don't need to worry about Machines that are older than kcp.Spec.UpgradeAfter
-	currentMachines := internal.FilterMachines(ownedMachines, internal.MatchesConfigurationHash(currentConfigurationHash))
-	numMachines := len(currentMachines)
+	// If we've made it this far, we we can assume that all ownedMachines are up to date
+	numMachines := len(ownedMachines)
 	desiredReplicas := int(*kcp.Spec.Replicas)
 
 	switch {
@@ -325,17 +325,84 @@ func (r *KubeadmControlPlaneReconciler) updateStatus(ctx context.Context, kcp *c
 }
 
 func (r *KubeadmControlPlaneReconciler) upgradeControlPlane(ctx context.Context, cluster *clusterv1.Cluster, kcp *controlplanev1.KubeadmControlPlane, logger logr.Logger) (ctrl.Result, error) {
+	// TODO: handle reconciliation of etcd members and kubeadm config in case they get out of sync with cluster
+	ownedMachines, err := r.managementCluster.GetMachinesForCluster(ctx, clusterKey(cluster), internal.OwnedControlPlaneMachines(kcp.Name))
+	if err != nil {
+		logger.Error(err, "failed to retrieve machines for cluster")
+		return ctrl.Result{}, err
+	}
+	requireUpgrade := internal.FilterMachines(
+		ownedMachines,
+		internal.HasOutdatedConfiguration(hash.Compute(&kcp.Spec)),
+		internal.OlderThan(kcp.Spec.UpgradeAfter),
+	)
+	if len(requireUpgrade) == 0 {
+		logger.Info("no machines found to upgrade")
+		// requeue to perform any additional operations that may be required
+		return ctrl.Result{Requeue: true}, nil
+	}
 
-	// TODO: verify health for each existing replica
-	// TODO: mark an old Machine via the label kubeadm.controlplane.cluster.x-k8s.io/selected-for-upgrade
-	// TODO: check full cluster health
-	// TODO: provision new Machine to replace marked Machine
-	// TODO: wait for health of all existing replicas, ideally in a re-entrant way to avoid waiting in process
-	// TODO: wait for full cluster health, ideally in a re-entrant way to avoid waiting in process
-	// TODO: Remove etcd membership for old Machine instance
-	// TODO: Update the kubeadm configmap
-	// TODO: Delete the Marked ControlPlane machine
-	// TODO: Continue with next OldMachine
+	if err := r.healthCheck(ctx, clusterKey(cluster), kcp.Name); err != nil {
+		logger.Error(err, "waiting for control plane to pass health check before continuing upgrade")
+		r.recorder.Eventf(kcp, corev1.EventTypeWarning, "ControlPlaneUnhealthy", "Waiting for control plane to pass health check before continuing upgrade: %v", err)
+		return ctrl.Result{RequeueAfter: HealthCheckFailedRequeueAfter}, err
+	}
+
+	// If there is not already a Machine that is marked for upgrade, find one and mark it
+	selectedForUpgrade := internal.FilterMachines(requireUpgrade, internal.SelectedForUpgrade())
+	if len(selectedForUpgrade) == 0 {
+		oldest := oldestMachine(selectedForUpgrade)
+		if oldest == nil {
+			logger.Error(err, "failed to pick control plane Machine to delete")
+			return ctrl.Result{}, err
+		}
+
+		logger := logger.WithValues("machine", oldest.Name)
+		patchHelper, err := patch.NewHelper(oldest, r.Client)
+		if err != nil {
+			logger.Error(err, "failed to create patch helper for machine")
+			return ctrl.Result{}, err
+		}
+
+		oldest.Labels[controlplanev1.SelectedForUpgradeLabel] = ""
+
+		if err := patchHelper.Patch(ctx, oldest); err != nil {
+			logger.Error(err, "failed to patch machine selected for upgrade")
+			return ctrl.Result{}, err
+		}
+		selectedForUpgrade = append(selectedForUpgrade, oldest)
+	}
+
+	// Determine if we need to add an additional control plane Machine or clean up an already replaced one
+	switch {
+	// TODO: find a better comparison to use for adding a new ControlPlane instance. Since upgrades take precedence
+	// over scaling operations, we can't trust this to hold true
+	case len(ownedMachines) == int(*kcp.Spec.Replicas):
+		// return here to avoid blocking while waiting for the new control plane Machine to come up
+		return r.scaleUpControlPlane(ctx, cluster, kcp, logger)
+	default:
+		machinesToDelete := internal.FilterMachines(selectedForUpgrade, internal.WithoutDeletionTimestamp())
+		if len(machinesToDelete) != len(selectedForUpgrade) {
+			logger.Info("waiting for already deleted machines to finish deleting")
+			return ctrl.Result{RequeueAfter: DeleteRequeueAfter}, nil
+		}
+		machineToDelete := oldestMachine(machinesToDelete)
+		if machineToDelete == nil {
+			logger.Error(err, "failed to pick control plane Machine to delete")
+			return ctrl.Result{}, err
+		}
+
+		logger := logger.WithValues("machine", machineToDelete.Name)
+		if err := r.managementCluster.RemoveEtcdMemberForMachine(ctx, clusterKey(cluster), machineToDelete); err != nil {
+			logger.Error(err, "failed to remove etcd member for machine")
+			return ctrl.Result{}, err
+		}
+		// TODO: Update the kubeadm configmap
+		if err := r.Client.Delete(ctx, machineToDelete); err != nil && !apierrors.IsNotFound(err) {
+			logger.Error(err, "failed to delete machine")
+			return ctrl.Result{}, err
+		}
+	}
 
 	return ctrl.Result{}, nil
 }
@@ -418,6 +485,12 @@ func (r *KubeadmControlPlaneReconciler) scaleDownControlPlane(ctx context.Contex
 	}
 
 	logger = logger.WithValues("machine", machineToDelete)
+
+	if err := r.managementCluster.RemoveEtcdMemberForMachine(ctx, clusterKey(cluster), machineToDelete); err != nil {
+		logger.Error(err, "failed to remove etcd member for machine")
+		return ctrl.Result{}, err
+	}
+	// TODO: Update the kubeadm configmap
 
 	if err := r.Client.Delete(ctx, machineToDelete); err != nil && !apierrors.IsNotFound(err) {
 		logger.Error(err, "failed to delete control plane machine")

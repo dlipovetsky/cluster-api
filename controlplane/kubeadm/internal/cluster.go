@@ -135,6 +135,20 @@ func OlderThan(t *metav1.Time) func(machine *clusterv1.Machine) bool {
 	}
 }
 
+// SelectedForUpgrade returns a MachineFilter function to find all machines that have the
+// controlplanev1.SelectedForUpgradeLabel set.
+func SelectedForUpgrade() func(machine *clusterv1.Machine) bool {
+	return func(machine *clusterv1.Machine) bool {
+		if machine == nil || machine.Labels == nil {
+			return false
+		}
+		if _, ok := machine.Labels[controlplanev1.SelectedForUpgradeLabel]; ok {
+			return true
+		}
+		return false
+	}
+}
+
 // FilterMachines returns a filtered list of machines
 func FilterMachines(machines []*clusterv1.Machine, filters ...func(machine *clusterv1.Machine) bool) []*clusterv1.Machine {
 	if len(filters) == 0 {
@@ -207,7 +221,7 @@ func (m *ManagementCluster) getCluster(ctx context.Context, clusterKey types.Nam
 		client:     c,
 		restConfig: restConfig,
 		etcdCACert: etcdCACert,
-		etcdCAkey:  etcdCAKey,
+		etcdCAKey:  etcdCAKey,
 	}, nil
 }
 
@@ -292,17 +306,31 @@ func (m *ManagementCluster) TargetClusterEtcdIsHealthy(ctx context.Context, clus
 	return m.healthCheck(ctx, cluster.etcdIsHealthy, clusterKey, controlPlaneName)
 }
 
+func (m *ManagementCluster) RemoveEtcdMemberForMachine(ctx context.Context, clusterKey types.NamespacedName, machine *clusterv1.Machine) error {
+	if machine == nil || machine.Status.NodeRef == nil {
+		// Nothing to do, no node for Machine
+		return nil
+	}
+
+	cluster, err := m.getCluster(ctx, clusterKey)
+	if err != nil {
+		return err
+	}
+
+	return cluster.removeMemberForNode(ctx, machine.Status.NodeRef.Name)
+}
+
 // cluster are operations on target clusters.
 type cluster struct {
 	client ctrlclient.Client
 	// restConfig is required for the proxy.
 	restConfig            *rest.Config
-	etcdCACert, etcdCAkey []byte
+	etcdCACert, etcdCAKey []byte
 }
 
 // generateEtcdTLSClientBundle builds an etcd client TLS bundle from the Etcd CA for this cluster.
 func (c *cluster) generateEtcdTLSClientBundle() (*tls.Config, error) {
-	clientCert, err := generateClientCert(c.etcdCACert, c.etcdCAkey)
+	clientCert, err := generateClientCert(c.etcdCACert, c.etcdCAKey)
 	if err != nil {
 		return nil, err
 	}
@@ -368,6 +396,32 @@ func (c *cluster) controlPlaneIsHealthy(ctx context.Context) (healthCheckResult,
 	}
 
 	return response, nil
+}
+
+func (c *cluster) removeMemberForNode(ctx context.Context, nodeName string) error {
+	tlsConfig, err := c.generateEtcdTLSClientBundle()
+	if err != nil {
+		return err
+	}
+
+	// Create the etcd client for the etcd Pod scheduled on the Node
+	etcdClient, err := c.getEtcdClientForNode(nodeName, tlsConfig)
+	if err != nil {
+		return errors.Wrap(err, "failed to create etcd client")
+	}
+
+	// List etcd members. This checks that the member is healthy, because the request goes through consensus.
+	members, err := etcdClient.Members(ctx)
+	if err != nil {
+		return errors.Wrap(err, "failed to list etcd members using etcd client")
+	}
+	member := etcdutil.MemberForName(members, nodeName)
+
+	if err := etcdClient.RemoveMember(ctx, member.ID); err != nil {
+		return errors.Wrap(err, "failed to remove member from etcd")
+	}
+
+	return nil
 }
 
 // etcdIsHealthy runs checks for every etcd member in the cluster to satisfy our definition of healthy.
@@ -454,7 +508,7 @@ func (c *cluster) getEtcdClientForNode(nodeName string, tlsConfig *tls.Config) (
 	// This does not support external etcd.
 	p := proxy.Proxy{
 		Kind:         "pods",
-		Namespace:    "kube-system", // TODO, can etcd ever run in a different namespace?
+		Namespace:    metav1.NamespaceSystem, // TODO, can etcd ever run in a different namespace?
 		ResourceName: staticPodName("etcd", nodeName),
 		KubeConfig:   c.restConfig,
 		TLSConfig:    tlsConfig,
