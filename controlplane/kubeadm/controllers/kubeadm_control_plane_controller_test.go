@@ -78,8 +78,9 @@ func TestClusterToKubeadmControlPlane(t *testing.T) {
 	}
 
 	r := &KubeadmControlPlaneReconciler{
-		Client: fakeClient,
-		Log:    log.Log,
+		Client:   fakeClient,
+		Log:      log.Log,
+		recorder: record.NewFakeRecorder(32),
 	}
 
 	got := r.ClusterToKubeadmControlPlane(
@@ -104,8 +105,9 @@ func TestClusterToKubeadmControlPlaneNoControlPlane(t *testing.T) {
 	}
 
 	r := &KubeadmControlPlaneReconciler{
-		Client: fakeClient,
-		Log:    log.Log,
+		Client:   fakeClient,
+		Log:      log.Log,
+		recorder: record.NewFakeRecorder(32),
 	}
 
 	got := r.ClusterToKubeadmControlPlane(
@@ -137,8 +139,9 @@ func TestClusterToKubeadmControlPlaneOtherControlPlane(t *testing.T) {
 	}
 
 	r := &KubeadmControlPlaneReconciler{
-		Client: fakeClient,
-		Log:    log.Log,
+		Client:   fakeClient,
+		Log:      log.Log,
+		recorder: record.NewFakeRecorder(32),
 	}
 
 	got := r.ClusterToKubeadmControlPlane(
@@ -163,8 +166,9 @@ func TestReconcileKubeconfigEmptyAPIEndpoints(t *testing.T) {
 
 	fakeClient := newFakeClient(g, kcp.DeepCopy())
 	r := &KubeadmControlPlaneReconciler{
-		Client: fakeClient,
-		Log:    log.Log,
+		Client:   fakeClient,
+		Log:      log.Log,
+		recorder: record.NewFakeRecorder(32),
 	}
 
 	g.Expect(r.reconcileKubeconfig(context.Background(), clusterName, clusterv1.APIEndpoint{}, kcp)).To(Succeed())
@@ -191,8 +195,9 @@ func TestReconcileKubeconfigMissingCACertificate(t *testing.T) {
 
 	fakeClient := newFakeClient(g, kcp.DeepCopy())
 	r := &KubeadmControlPlaneReconciler{
-		Client: fakeClient,
-		Log:    log.Log,
+		Client:   fakeClient,
+		Log:      log.Log,
+		recorder: record.NewFakeRecorder(32),
 	}
 
 	g.Expect(r.reconcileKubeconfig(context.Background(), clusterName, endpoint, kcp)).NotTo(Succeed())
@@ -232,8 +237,9 @@ func TestReconcileKubeconfigSecretAlreadyExists(t *testing.T) {
 
 	fakeClient := newFakeClient(g, kcp.DeepCopy(), existingKubeconfigSecret.DeepCopy())
 	r := &KubeadmControlPlaneReconciler{
-		Client: fakeClient,
-		Log:    log.Log,
+		Client:   fakeClient,
+		Log:      log.Log,
+		recorder: record.NewFakeRecorder(32),
 	}
 
 	g.Expect(r.reconcileKubeconfig(context.Background(), clusterName, endpoint, kcp)).To(Succeed())
@@ -279,8 +285,9 @@ func TestKubeadmControlPlaneReconciler_reconcileKubeconfig(t *testing.T) {
 
 	fakeClient := newFakeClient(g, kcp.DeepCopy(), existingCACertSecret.DeepCopy())
 	r := &KubeadmControlPlaneReconciler{
-		Client: fakeClient,
-		Log:    log.Log,
+		Client:   fakeClient,
+		Log:      log.Log,
+		recorder: record.NewFakeRecorder(32),
 	}
 	g.Expect(r.reconcileKubeconfig(context.Background(), clusterName, endpoint, kcp)).To(Succeed())
 
@@ -303,11 +310,12 @@ func TestKubeadmControlPlaneReconciler_initializeControlPlane(t *testing.T) {
 	fakeClient := newFakeClient(g, cluster.DeepCopy(), kcp.DeepCopy(), genericMachineTemplate.DeepCopy())
 
 	r := &KubeadmControlPlaneReconciler{
-		Client: fakeClient,
-		Log:    log.Log,
+		Client:   fakeClient,
+		Log:      log.Log,
+		recorder: record.NewFakeRecorder(32),
 	}
 
-	result, err := r.initializeControlPlane(context.Background(), cluster, kcp)
+	result, err := r.initializeControlPlane(context.Background(), cluster, kcp, r.Log)
 	g.Expect(result).To(Equal(ctrl.Result{Requeue: true}))
 	g.Expect(err).NotTo(HaveOccurred())
 
@@ -346,8 +354,9 @@ func TestReconcileNoClusterOwnerRef(t *testing.T) {
 	log.SetLogger(klogr.New())
 
 	r := &KubeadmControlPlaneReconciler{
-		Client: fakeClient,
-		Log:    log.Log,
+		Client:   fakeClient,
+		Log:      log.Log,
+		recorder: record.NewFakeRecorder(32),
 	}
 
 	result, err := r.Reconcile(ctrl.Request{NamespacedName: types.NamespacedName{Name: kcp.Name, Namespace: kcp.Namespace}})
@@ -382,8 +391,9 @@ func TestReconcileNoCluster(t *testing.T) {
 	log.SetLogger(klogr.New())
 
 	r := &KubeadmControlPlaneReconciler{
-		Client: fakeClient,
-		Log:    log.Log,
+		Client:   fakeClient,
+		Log:      log.Log,
+		recorder: record.NewFakeRecorder(32),
 	}
 
 	_, err := r.Reconcile(ctrl.Request{NamespacedName: types.NamespacedName{Name: kcp.Name, Namespace: kcp.Namespace}})
@@ -430,6 +440,7 @@ func TestReconcileClusterNoEndpoints(t *testing.T) {
 		Client:             fakeClient,
 		Log:                log.Log,
 		remoteClientGetter: fakeremote.NewClusterClient,
+		recorder:           record.NewFakeRecorder(32),
 	}
 
 	result, err := r.Reconcile(ctrl.Request{NamespacedName: types.NamespacedName{Name: kcp.Name, Namespace: kcp.Namespace}})
@@ -524,6 +535,7 @@ func TestReconcileInitializeControlPlane(t *testing.T) {
 		Log:                log.Log,
 		remoteClientGetter: fakeremote.NewClusterClient,
 		scheme:             scheme.Scheme,
+		recorder:           record.NewFakeRecorder(32),
 	}
 
 	result, err := r.Reconcile(ctrl.Request{NamespacedName: types.NamespacedName{Name: kcp.Name, Namespace: kcp.Namespace}})
@@ -609,6 +621,7 @@ func TestKubeadmControlPlaneReconciler_generateMachine(t *testing.T) {
 		Client:            fakeClient,
 		Log:               log.Log,
 		managementCluster: &internal.ManagementCluster{Client: fakeClient},
+		recorder:          record.NewFakeRecorder(32),
 	}
 	g.Expect(r.generateMachine(context.Background(), kcp, cluster, infraRef, bootstrapRef)).To(Succeed())
 
@@ -653,8 +666,9 @@ func TestKubeadmControlPlaneReconciler_generateKubeadmConfig(t *testing.T) {
 	}
 
 	r := &KubeadmControlPlaneReconciler{
-		Client: fakeClient,
-		Log:    log.Log,
+		Client:   fakeClient,
+		Log:      log.Log,
+		recorder: record.NewFakeRecorder(32),
 	}
 
 	got, err := r.generateKubeadmConfig(context.Background(), kcp, cluster, spec.DeepCopy())
@@ -756,6 +770,7 @@ func TestKubeadmControlPlaneReconciler_updateStatusNoMachines(t *testing.T) {
 		remoteClientGetter: fakeremote.NewClusterClient,
 		scheme:             scheme.Scheme,
 		managementCluster:  &internal.ManagementCluster{Client: fakeClient},
+		recorder:           record.NewFakeRecorder(32),
 	}
 
 	g.Expect(r.updateStatus(context.Background(), kcp, cluster)).To(Succeed())
@@ -774,7 +789,7 @@ func createMachineNodePair(name string, cluster *clusterv1.Cluster, kcp *control
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: cluster.Namespace,
 			Name:      name,
-			Labels:    internal.ControlPlaneLabelsForCluster(cluster.Name),
+			Labels:    internal.ControlPlaneLabelsForClusterWithHash(cluster.Name, hash.Compute(&kcp.Spec)),
 			OwnerReferences: []metav1.OwnerReference{
 				*metav1.NewControllerRef(kcp, controlplanev1.GroupVersion.WithKind("KubeadmControlPlane")),
 			},
@@ -842,6 +857,7 @@ func TestKubeadmControlPlaneReconciler_updateStatusAllMachinesNotReady(t *testin
 		remoteClientGetter: fakeremote.NewClusterClient,
 		scheme:             scheme.Scheme,
 		managementCluster:  &internal.ManagementCluster{Client: fakeClient},
+		recorder:           record.NewFakeRecorder(32),
 	}
 
 	g.Expect(r.updateStatus(context.Background(), kcp, cluster)).To(Succeed())
@@ -890,6 +906,7 @@ func TestKubeadmControlPlaneReconciler_updateStatusAllMachinesReady(t *testing.T
 		remoteClientGetter: fakeremote.NewClusterClient,
 		scheme:             scheme.Scheme,
 		managementCluster:  &internal.ManagementCluster{Client: fakeClient},
+		recorder:           record.NewFakeRecorder(32),
 	}
 
 	g.Expect(r.updateStatus(context.Background(), kcp, cluster)).To(Succeed())
@@ -942,6 +959,7 @@ func TestKubeadmControlPlaneReconciler_updateStatusMachinesReadyMixed(t *testing
 		remoteClientGetter: fakeremote.NewClusterClient,
 		scheme:             scheme.Scheme,
 		managementCluster:  &internal.ManagementCluster{Client: fakeClient},
+		recorder:           record.NewFakeRecorder(32),
 	}
 
 	g.Expect(r.updateStatus(context.Background(), kcp, cluster)).To(Succeed())
@@ -1112,9 +1130,11 @@ func TestKubeadmControlPlaneReconciler_reconcileDelete(t *testing.T) {
 		r := &KubeadmControlPlaneReconciler{
 			Client:            fakeClient,
 			managementCluster: &internal.ManagementCluster{Client: fakeClient},
+			Log:               log.Log,
+			recorder:          record.NewFakeRecorder(32),
 		}
 
-		result, err := r.reconcileDelete(context.Background(), cluster, kcp, log.Log)
+		result, err := r.reconcileDelete(context.Background(), cluster, kcp, r.Log)
 		g.Expect(result).To(Equal(ctrl.Result{RequeueAfter: DeleteRequeueAfter}))
 		g.Expect(err).NotTo(HaveOccurred())
 		g.Expect(kcp.Finalizers).To(ContainElement(controlplanev1.KubeadmControlPlaneFinalizer))
@@ -1157,10 +1177,12 @@ func TestKubeadmControlPlaneReconciler_reconcileDelete(t *testing.T) {
 		r := &KubeadmControlPlaneReconciler{
 			Client:            fakeClient,
 			managementCluster: &internal.ManagementCluster{Client: fakeClient},
+			Log:               log.Log,
+			recorder:          record.NewFakeRecorder(32),
 		}
 
 		result, err := r.reconcileDelete(context.Background(), cluster, kcp, log.Log)
-		g.Expect(result).To(Equal(ctrl.Result{Requeue: true}))
+		g.Expect(result).To(Equal(ctrl.Result{RequeueAfter: DeleteRequeueAfter}))
 		g.Expect(err).NotTo(HaveOccurred())
 		g.Expect(kcp.Finalizers).To(ContainElement(controlplanev1.KubeadmControlPlaneFinalizer))
 
@@ -1183,6 +1205,8 @@ func TestKubeadmControlPlaneReconciler_reconcileDelete(t *testing.T) {
 		r := &KubeadmControlPlaneReconciler{
 			Client:            fakeClient,
 			managementCluster: &internal.ManagementCluster{Client: fakeClient},
+			recorder:          record.NewFakeRecorder(32),
+			Log:               log.Log,
 		}
 
 		result, err := r.reconcileDelete(context.Background(), cluster, kcp, log.Log)
@@ -1241,9 +1265,11 @@ func TestKubeadmControlPlaneReconciler_scaleUpControlPlane(t *testing.T) {
 		r := &KubeadmControlPlaneReconciler{
 			Client:            fakeClient,
 			managementCluster: fmc,
+			Log:               log.Log,
+			recorder:          record.NewFakeRecorder(32),
 		}
 
-		result, err := r.scaleUpControlPlane(context.Background(), cluster, kcp)
+		result, err := r.scaleUpControlPlane(context.Background(), cluster, kcp, r.Log)
 		g.Expect(result).To(Equal(ctrl.Result{Requeue: true}))
 		g.Expect(err).ToNot(HaveOccurred())
 
@@ -1254,21 +1280,25 @@ func TestKubeadmControlPlaneReconciler_scaleUpControlPlane(t *testing.T) {
 	t.Run("does not create a control plane Machine if any health check fails", func(t *testing.T) {
 		g := NewWithT(t)
 
-		fmc := &fakeManagementCluster{}
+		cluster, kcp, _ := createClusterWithControlPlane()
+		fmc := &fakeManagementCluster{
+			ControlPlaneHealthy: true,
+			EtcdHealthy:         false,
+		}
 
 		r := &KubeadmControlPlaneReconciler{
 			managementCluster: fmc,
+			Log:               log.Log,
+			recorder:          record.NewFakeRecorder(32),
 		}
 
-		fmc.ControlPlaneHealthy = true
-		fmc.EtcdHealthy = false
-		result, err := r.scaleUpControlPlane(context.Background(), &clusterv1.Cluster{}, &controlplanev1.KubeadmControlPlane{})
+		result, err := r.scaleUpControlPlane(context.Background(), cluster, kcp, r.Log)
 		g.Expect(result).To(Equal(ctrl.Result{RequeueAfter: HealthCheckFailedRequeueAfter}))
 		g.Expect(err).To(HaveOccurred())
 
 		fmc.ControlPlaneHealthy = false
 		fmc.EtcdHealthy = true
-		result, err = r.scaleUpControlPlane(context.Background(), &clusterv1.Cluster{}, &controlplanev1.KubeadmControlPlane{})
+		result, err = r.scaleUpControlPlane(context.Background(), cluster, kcp, r.Log)
 		g.Expect(result).To(Equal(ctrl.Result{RequeueAfter: HealthCheckFailedRequeueAfter}))
 		g.Expect(err).To(HaveOccurred())
 
@@ -1299,11 +1329,13 @@ func TestKubeadmControlPlaneReconciler_scaleDownControlPlane(t *testing.T) {
 		r := &KubeadmControlPlaneReconciler{
 			Client:            fakeClient,
 			managementCluster: fmc,
+			Log:               log.Log,
+			recorder:          record.NewFakeRecorder(32),
 		}
 
 		fmc.ControlPlaneHealthy = true
 		fmc.EtcdHealthy = true
-		result, err := r.scaleDownControlPlane(context.Background(), &clusterv1.Cluster{}, &controlplanev1.KubeadmControlPlane{})
+		result, err := r.scaleDownControlPlane(context.Background(), &clusterv1.Cluster{}, &controlplanev1.KubeadmControlPlane{}, r.Log)
 		g.Expect(err).ToNot(HaveOccurred())
 		g.Expect(result).To(Equal(ctrl.Result{Requeue: true}))
 
@@ -1334,13 +1366,15 @@ func TestKubeadmControlPlaneReconciler_scaleDownControlPlane(t *testing.T) {
 		r := &KubeadmControlPlaneReconciler{
 			Client:            fakeClient,
 			managementCluster: fmc,
+			Log:               log.Log,
+			recorder:          record.NewFakeRecorder(32),
 		}
 
 		controlPlaneMachines := clusterv1.MachineList{}
 
 		fmc.ControlPlaneHealthy = false
 		fmc.EtcdHealthy = true
-		result, err := r.scaleDownControlPlane(context.Background(), &clusterv1.Cluster{}, &controlplanev1.KubeadmControlPlane{})
+		result, err := r.scaleDownControlPlane(context.Background(), &clusterv1.Cluster{}, &controlplanev1.KubeadmControlPlane{}, r.Log)
 		g.Expect(err).To(HaveOccurred())
 		g.Expect(result).To(Equal(ctrl.Result{RequeueAfter: HealthCheckFailedRequeueAfter}))
 		g.Expect(fakeClient.List(context.Background(), &controlPlaneMachines)).To(Succeed())
@@ -1348,7 +1382,7 @@ func TestKubeadmControlPlaneReconciler_scaleDownControlPlane(t *testing.T) {
 
 		fmc.ControlPlaneHealthy = true
 		fmc.EtcdHealthy = false
-		result, err = r.scaleDownControlPlane(context.Background(), &clusterv1.Cluster{}, &controlplanev1.KubeadmControlPlane{})
+		result, err = r.scaleDownControlPlane(context.Background(), &clusterv1.Cluster{}, &controlplanev1.KubeadmControlPlane{}, r.Log)
 		g.Expect(err).To(HaveOccurred())
 		g.Expect(result).To(Equal(ctrl.Result{RequeueAfter: HealthCheckFailedRequeueAfter}))
 		g.Expect(fakeClient.List(context.Background(), &controlPlaneMachines)).To(Succeed())

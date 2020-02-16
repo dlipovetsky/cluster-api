@@ -70,7 +70,18 @@ func OwnedControlPlaneMachines(controlPlaneName string) func(machine *clusterv1.
 // that have a deletion timestamp.
 func HasDeletionTimestamp() func(machine *clusterv1.Machine) bool {
 	return func(machine *clusterv1.Machine) bool {
-		return machine.GetDeletionTimestamp() != nil
+		return !WithoutDeletionTimestamp()(machine)
+	}
+}
+
+// WithoutDeletionTimestamp returns a MachineFilter function to find all machines
+// that do not have a deletion timestamp.
+func WithoutDeletionTimestamp() func(machine *clusterv1.Machine) bool {
+	return func(machine *clusterv1.Machine) bool {
+		if machine == nil {
+			return false
+		}
+		return machine.DeletionTimestamp.IsZero()
 	}
 }
 
