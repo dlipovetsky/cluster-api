@@ -351,26 +351,12 @@ func (r *KubeadmControlPlaneReconciler) upgradeControlPlane(ctx context.Context,
 	// If there is not already a Machine that is marked for upgrade, find one and mark it
 	selectedForUpgrade := internal.FilterMachines(requireUpgrade, internal.SelectedForUpgrade())
 	if len(selectedForUpgrade) == 0 {
-		oldest := oldestMachine(selectedForUpgrade)
-		if oldest == nil {
-			logger.Error(err, "failed to pick control plane Machine to delete")
-			return ctrl.Result{}, err
-		}
-
-		logger := logger.WithValues("machine", oldest.Name)
-		patchHelper, err := patch.NewHelper(oldest, r.Client)
+		selectedMachine, err := r.selectMachineForUpgrade(ctx, cluster, requireUpgrade)
 		if err != nil {
-			logger.Error(err, "failed to create patch helper for machine")
+			logger.Error(err, "failed to select machine for upgrade")
 			return ctrl.Result{}, err
 		}
-
-		oldest.Labels[controlplanev1.SelectedForUpgradeLabel] = ""
-
-		if err := patchHelper.Patch(ctx, oldest); err != nil {
-			logger.Error(err, "failed to patch machine selected for upgrade")
-			return ctrl.Result{}, err
-		}
-		selectedForUpgrade = append(selectedForUpgrade, oldest)
+		selectedForUpgrade = append(selectedForUpgrade, selectedMachine)
 	}
 
 	// Determine if we need to add an additional control plane Machine or clean up an already replaced one
@@ -405,6 +391,29 @@ func (r *KubeadmControlPlaneReconciler) upgradeControlPlane(ctx context.Context,
 	}
 
 	return ctrl.Result{}, nil
+}
+
+func (r *KubeadmControlPlaneReconciler) selectMachineForUpgrade(ctx context.Context, cluster *clusterv1.Cluster, requireUpgrade []*clusterv1.Machine) (*clusterv1.Machine, error) {
+	failureDomain := r.failureDomainForUpgrade(cluster, requireUpgrade)
+	oldest := oldestMachine(internal.FilterMachines(requireUpgrade, internal.InFailureDomain(failureDomain)))
+	if oldest == nil {
+		if oldest == nil {
+			return nil, errors.New("failed to pick control plane Machine to delete")
+		}
+	}
+
+	patchHelper, err := patch.NewHelper(oldest, r.Client)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to create patch helper for machine %s", oldest.Name)
+	}
+
+	oldest.Labels[controlplanev1.SelectedForUpgradeLabel] = ""
+
+	if err := patchHelper.Patch(ctx, oldest); err != nil {
+		return nil, errors.Wrapf(err, "failed to patch machine %s selected for upgrade", oldest.Name)
+	}
+
+	return oldest, nil
 }
 
 func (r *KubeadmControlPlaneReconciler) initializeControlPlane(ctx context.Context, cluster *clusterv1.Cluster, kcp *controlplanev1.KubeadmControlPlane, logger logr.Logger) (ctrl.Result, error) {
@@ -606,6 +615,15 @@ func (r *KubeadmControlPlaneReconciler) generateKubeadmConfig(ctx context.Contex
 	}
 
 	return bootstrapRef, nil
+}
+
+func (r *KubeadmControlPlaneReconciler) failureDomainForUpgrade(cluster *clusterv1.Cluster, machines []*clusterv1.Machine) *string {
+	// Don't do anything if there are no failure domains defined on the cluster.
+	if len(cluster.Status.FailureDomains) == 0 {
+		return nil
+	}
+	failureDomain := internal.PickMost(cluster.Status.FailureDomains.FilterControlPlane(), machines)
+	return &failureDomain
 }
 
 func (r *KubeadmControlPlaneReconciler) failureDomainForScaleDown(ctx context.Context, kcp *controlplanev1.KubeadmControlPlane, cluster *clusterv1.Cluster) (*string, error) {
