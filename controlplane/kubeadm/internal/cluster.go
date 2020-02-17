@@ -89,9 +89,6 @@ func WithoutDeletionTimestamp() func(machine *clusterv1.Machine) bool {
 // that do not match a given KubeadmControlPlane configuration hash.
 func HasOutdatedConfiguration(configHash string) func(machine *clusterv1.Machine) bool {
 	return func(machine *clusterv1.Machine) bool {
-		if machine == nil {
-			return false
-		}
 		return !MatchesConfigurationHash(configHash)(machine)
 	}
 }
