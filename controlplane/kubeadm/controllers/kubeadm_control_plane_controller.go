@@ -405,7 +405,13 @@ func (r *KubeadmControlPlaneReconciler) scaleDownControlPlane(ctx context.Contex
 		return ctrl.Result{RequeueAfter: DeleteRequeueAfter}, nil
 	}
 
-	machineToDelete := oldestMachine(ownedMachines)
+	failureDomain, err := r.failureDomainForScaleDown(ctx, kcp, cluster)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	machinesInFailureDomain := internal.FilterMachines(ownedMachines, internal.InFailureDomain(failureDomain))
+
+	machineToDelete := oldestMachine(machinesInFailureDomain)
 	if machineToDelete == nil {
 		logger.Error(err, "failed to pick control plane Machine to delete")
 		return ctrl.Result{}, err
@@ -527,6 +533,19 @@ func (r *KubeadmControlPlaneReconciler) generateKubeadmConfig(ctx context.Contex
 	}
 
 	return bootstrapRef, nil
+}
+
+func (r *KubeadmControlPlaneReconciler) failureDomainForScaleDown(ctx context.Context, kcp *controlplanev1.KubeadmControlPlane, cluster *clusterv1.Cluster) (*string, error) {
+	// Don't do anything if there are no failure domains defined on the cluster.
+	if len(cluster.Status.FailureDomains) == 0 {
+		return nil, nil
+	}
+	ownedMachines, err := r.managementCluster.GetMachinesForCluster(ctx, clusterKey(cluster), internal.OwnedControlPlaneMachines(kcp.Name))
+	if err != nil {
+		return nil, err
+	}
+	failureDomain := internal.PickMost(cluster.Status.FailureDomains.FilterControlPlane(), ownedMachines)
+	return &failureDomain, nil
 }
 
 func (r *KubeadmControlPlaneReconciler) failureDomainForScaleUp(ctx context.Context, kcp *controlplanev1.KubeadmControlPlane, cluster *clusterv1.Cluster) (*string, error) {

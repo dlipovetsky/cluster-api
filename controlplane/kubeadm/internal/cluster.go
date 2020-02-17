@@ -51,6 +51,23 @@ type ManagementCluster struct {
 	Client ctrlclient.Client
 }
 
+// InFailureDomain returns a MachineFilter function to find all machines
+// in a given failure domain
+func InFailureDomain(failureDomain *string) func(machine *clusterv1.Machine) bool {
+	return func(machine *clusterv1.Machine) bool {
+		if machine == nil {
+			return false
+		}
+		if failureDomain == nil {
+			return true
+		}
+		if machine.Spec.FailureDomain == nil {
+			return false
+		}
+		return *machine.Spec.FailureDomain == *failureDomain
+	}
+}
+
 // OwnedControlPlaneMachines returns a MachineFilter function to find all owned control plane machines.
 // Usage: managementCluster.GetMachinesForCluster(ctx, cluster, OwnedControlPlaneMachines(controlPlane.Name))
 func OwnedControlPlaneMachines(controlPlaneName string) func(machine *clusterv1.Machine) bool {
