@@ -347,7 +347,7 @@ func (r *KubeadmControlPlaneReconciler) upgradeControlPlane(ctx context.Context,
 	if err := r.healthCheck(ctx, clusterKey(cluster), kcp.Name); err != nil {
 		logger.Error(err, "waiting for control plane to pass health check before continuing upgrade")
 		r.recorder.Eventf(kcp, corev1.EventTypeWarning, "ControlPlaneUnhealthy", "Waiting for control plane to pass health check before continuing upgrade: %v", err)
-		return ctrl.Result{RequeueAfter: HealthCheckFailedRequeueAfter}, err
+		return ctrl.Result{RequeueAfter: HealthCheckFailedRequeueAfter}, nil
 	}
 
 	// If there is not already a Machine that is marked for upgrade, find one and mark it
@@ -435,7 +435,7 @@ func (r *KubeadmControlPlaneReconciler) scaleUpControlPlane(ctx context.Context,
 	if err := r.healthCheck(ctx, clusterKey(cluster), kcp.Name); err != nil {
 		logger.Error(err, "waiting for control plane to pass health check before adding an additional control plane machine")
 		r.recorder.Eventf(kcp, corev1.EventTypeWarning, "ControlPlaneUnhealthy", "Waiting for control plane to pass health check before adding additional control plane machine: %v", err)
-		return ctrl.Result{RequeueAfter: HealthCheckFailedRequeueAfter}, err
+		return ctrl.Result{RequeueAfter: HealthCheckFailedRequeueAfter}, nil
 	}
 
 	// Create the bootstrap configuration
@@ -469,7 +469,7 @@ func (r *KubeadmControlPlaneReconciler) scaleDownControlPlane(ctx context.Contex
 	if err := r.healthCheck(ctx, clusterKey(cluster), kcp.Name); err != nil {
 		logger.Error(err, "waiting for control plane to pass health check before scaling down")
 		r.recorder.Eventf(kcp, corev1.EventTypeWarning, "ControlPlaneUnhealthy", "Waiting for control plane to pass health check before scaling down: %v", err)
-		return ctrl.Result{RequeueAfter: HealthCheckFailedRequeueAfter}, err
+		return ctrl.Result{RequeueAfter: HealthCheckFailedRequeueAfter}, nil
 	}
 
 	ownedMachines, err := r.managementCluster.GetMachinesForCluster(ctx, clusterKey(cluster), internal.OwnedControlPlaneMachines(kcp.Name))
