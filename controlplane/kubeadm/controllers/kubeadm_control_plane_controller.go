@@ -257,19 +257,17 @@ func (r *KubeadmControlPlaneReconciler) reconcile(ctx context.Context, cluster *
 	// We are creating the first replica
 	case numMachines < desiredReplicas && numMachines == 0:
 		// Create new Machine w/ init
-		fd := r.failureDomainForScaleUp(cluster, ownedMachines)
 		logger.Info("Initializing control plane", "Desired", desiredReplicas, "Existing", numMachines)
-		return r.initializeControlPlane(ctx, cluster, kcp, fd, logger)
+		return r.initializeControlPlane(ctx, cluster, kcp, logger)
 	// We are scaling up
 	case numMachines < desiredReplicas && numMachines > 0:
 		// Create a new Machine w/ join
-		fd := r.failureDomainForScaleUp(cluster, ownedMachines)
 		logger.Info("Scaling up control plane", "Desired", desiredReplicas, "Existing", numMachines)
-		return r.scaleUpControlPlane(ctx, cluster, kcp, fd, logger)
+		return r.scaleUpControlPlane(ctx, cluster, kcp, ownedMachines, logger)
 	// We are scaling down
 	case numMachines > desiredReplicas:
 		logger.Info("Scaling down control plane", "Desired", desiredReplicas, "Existing", numMachines)
-		return r.scaleDownControlPlane(ctx, cluster, kcp, logger)
+		return r.scaleDownControlPlane(ctx, cluster, kcp, ownedMachines, logger)
 	}
 
 	return ctrl.Result{}, nil
@@ -363,34 +361,11 @@ func (r *KubeadmControlPlaneReconciler) upgradeControlPlane(ctx context.Context,
 
 	// Determine if we need to add an additional control plane Machine or clean up an already replaced one
 	if len(ownedMachines) == int(*kcp.Spec.Replicas) {
-		failureDomain := r.failureDomainForScaleUp(cluster, ownedMachines)
 		// return here to avoid blocking while waiting for the new control plane Machine to come up
-		return r.scaleUpControlPlane(ctx, cluster, kcp, failureDomain, logger)
+		return r.scaleUpControlPlane(ctx, cluster, kcp, ownedMachines, logger)
 	}
 
-	machinesToDelete := internal.FilterMachines(selectedForUpgrade, internal.Not(internal.HasDeletionTimestamp()))
-	if len(machinesToDelete) != len(selectedForUpgrade) {
-		logger.Info("waiting for already deleted machines to finish deleting")
-		return ctrl.Result{RequeueAfter: DeleteRequeueAfter}, nil
-	}
-	machineToDelete := oldestMachine(machinesToDelete)
-	if machineToDelete == nil {
-		logger.Error(err, "failed to pick control plane Machine to delete")
-		return ctrl.Result{}, err
-	}
-
-	l := logger.WithValues("machine", machineToDelete.Name)
-	if err := r.managementCluster.RemoveEtcdMemberForMachine(ctx, clusterKey(cluster), machineToDelete); err != nil {
-		l.Error(err, "failed to remove etcd member for machine")
-		return ctrl.Result{}, err
-	}
-	// TODO: Update the kubeadm configmap
-	if err := r.Client.Delete(ctx, machineToDelete); err != nil && !apierrors.IsNotFound(err) {
-		l.Error(err, "failed to delete machine")
-		return ctrl.Result{}, err
-	}
-
-	return ctrl.Result{}, nil
+	return r.scaleDownControlPlane(ctx, cluster, kcp, selectedForUpgrade, logger)
 }
 
 func (r *KubeadmControlPlaneReconciler) selectMachineForUpgrade(ctx context.Context, cluster *clusterv1.Cluster, requireUpgrade []*clusterv1.Machine) (*clusterv1.Machine, error) {
@@ -414,11 +389,12 @@ func (r *KubeadmControlPlaneReconciler) selectMachineForUpgrade(ctx context.Cont
 	return oldest, nil
 }
 
-func (r *KubeadmControlPlaneReconciler) initializeControlPlane(ctx context.Context, cluster *clusterv1.Cluster, kcp *controlplanev1.KubeadmControlPlane, failureDomain *string, logger logr.Logger) (ctrl.Result, error) {
+func (r *KubeadmControlPlaneReconciler) initializeControlPlane(ctx context.Context, cluster *clusterv1.Cluster, kcp *controlplanev1.KubeadmControlPlane, logger logr.Logger) (ctrl.Result, error) {
 	bootstrapSpec := kcp.Spec.KubeadmConfigSpec.DeepCopy()
 	bootstrapSpec.JoinConfiguration = nil
 
-	if err := r.cloneConfigsAndGenerateMachine(ctx, cluster, kcp, bootstrapSpec, failureDomain); err != nil {
+	fd := r.failureDomainForScaleUp(cluster, nil)
+	if err := r.cloneConfigsAndGenerateMachine(ctx, cluster, kcp, bootstrapSpec, fd); err != nil {
 		logger.Error(err, "failed to create initial control plane Machine")
 		r.recorder.Eventf(kcp, corev1.EventTypeWarning, "FailedInitialization", "Failed to create initial control plane Machine for cluster %s/%s control plane: %v", cluster.Namespace, cluster.Name, err)
 		return ctrl.Result{}, err
@@ -428,7 +404,7 @@ func (r *KubeadmControlPlaneReconciler) initializeControlPlane(ctx context.Conte
 	return ctrl.Result{Requeue: true}, nil
 }
 
-func (r *KubeadmControlPlaneReconciler) scaleUpControlPlane(ctx context.Context, cluster *clusterv1.Cluster, kcp *controlplanev1.KubeadmControlPlane, failureDomain *string, logger logr.Logger) (ctrl.Result, error) {
+func (r *KubeadmControlPlaneReconciler) scaleUpControlPlane(ctx context.Context, cluster *clusterv1.Cluster, kcp *controlplanev1.KubeadmControlPlane, machines []*clusterv1.Machine, logger logr.Logger) (ctrl.Result, error) {
 	if err := r.healthCheck(ctx, clusterKey(cluster), kcp.Name); err != nil {
 		logger.Error(err, "waiting for control plane to pass health check before adding an additional control plane machine")
 		r.recorder.Eventf(kcp, corev1.EventTypeWarning, "ControlPlaneUnhealthy", "Waiting for control plane to pass health check before adding additional control plane machine: %v", err)
@@ -440,13 +416,14 @@ func (r *KubeadmControlPlaneReconciler) scaleUpControlPlane(ctx context.Context,
 	bootstrapSpec.InitConfiguration = nil
 	bootstrapSpec.ClusterConfiguration = nil
 
-	if err := r.cloneConfigsAndGenerateMachine(ctx, cluster, kcp, bootstrapSpec, failureDomain); err != nil {
+	fd := r.failureDomainForScaleUp(cluster, machines)
+	if err := r.cloneConfigsAndGenerateMachine(ctx, cluster, kcp, bootstrapSpec, fd); err != nil {
 		logger.Error(err, "failed to create additional control plane Machine")
 		r.recorder.Eventf(kcp, corev1.EventTypeWarning, "FailedScaleUp", "Failed to create additional control plane Machine for cluster %s/%s control plane: %v", cluster.Namespace, cluster.Name, err)
 		return ctrl.Result{}, err
 	}
 
-	// Requeue the control plane, in case we are not done scaling up
+	// Requeue the control plane, in case we are not done performing operations
 	return ctrl.Result{Requeue: true}, nil
 }
 
@@ -462,31 +439,25 @@ func (r *KubeadmControlPlaneReconciler) healthCheck(ctx context.Context, cluster
 	return nil
 }
 
-func (r *KubeadmControlPlaneReconciler) scaleDownControlPlane(ctx context.Context, cluster *clusterv1.Cluster, kcp *controlplanev1.KubeadmControlPlane, logger logr.Logger) (ctrl.Result, error) {
+func (r *KubeadmControlPlaneReconciler) scaleDownControlPlane(ctx context.Context, cluster *clusterv1.Cluster, kcp *controlplanev1.KubeadmControlPlane, machines []*clusterv1.Machine, logger logr.Logger) (ctrl.Result, error) {
 	if err := r.healthCheck(ctx, clusterKey(cluster), kcp.Name); err != nil {
-		logger.Error(err, "waiting for control plane to pass health check before scaling down")
-		r.recorder.Eventf(kcp, corev1.EventTypeWarning, "ControlPlaneUnhealthy", "Waiting for control plane to pass health check before scaling down: %v", err)
+		logger.Error(err, "waiting for control plane to pass health check before deleting a machine")
+		r.recorder.Eventf(kcp, corev1.EventTypeWarning, "ControlPlaneUnhealthy", "Waiting for control plane to pass health check before deleting a machine: %v", err)
 		return ctrl.Result{RequeueAfter: HealthCheckFailedRequeueAfter}, nil
 	}
 
-	ownedMachines, err := r.managementCluster.GetMachinesForCluster(ctx, clusterKey(cluster), internal.OwnedControlPlaneMachines(kcp.Name))
-	if err != nil {
-		logger.Error(err, "failed to get list of owned machines")
-		return ctrl.Result{}, err
-	}
-
 	// Wait for any delete in progress to complete before deleting another Machine
-	if len(internal.FilterMachines(ownedMachines, internal.HasDeletionTimestamp())) > 0 {
+	if len(internal.FilterMachines(machines, internal.HasDeletionTimestamp())) > 0 {
 		return ctrl.Result{RequeueAfter: DeleteRequeueAfter}, nil
 	}
 
-	failureDomain := r.failureDomainForScaleDown(cluster, ownedMachines)
-	machinesInFailureDomain := internal.FilterMachines(ownedMachines, internal.InFailureDomain(failureDomain))
+	failureDomain := r.failureDomainForScaleDown(cluster, machines)
+	machinesInFailureDomain := internal.FilterMachines(machines, internal.InFailureDomain(failureDomain))
 
 	machineToDelete := oldestMachine(machinesInFailureDomain)
 	if machineToDelete == nil {
-		logger.Error(err, "failed to pick control plane Machine to delete")
-		return ctrl.Result{}, err
+		logger.Info("failed to pick control plane Machine to delete")
+		return ctrl.Result{}, errors.New("failed to pick control plane Machine to delete")
 	}
 
 	logger = logger.WithValues("machine", machineToDelete)
@@ -503,7 +474,7 @@ func (r *KubeadmControlPlaneReconciler) scaleDownControlPlane(ctx context.Contex
 		return ctrl.Result{}, err
 	}
 
-	// Requeue the control plane, in case we are not done scaling down
+	// Requeue the control plane, in case we are not done performing operations
 	return ctrl.Result{Requeue: true}, nil
 }
 
