@@ -1220,10 +1220,10 @@ func TestKubeadmControlPlaneReconciler_reconcileDelete(t *testing.T) {
 type fakeManagementCluster struct {
 	ControlPlaneHealthy bool
 	EtcdHealthy         bool
-	Machines            []*clusterv1.Machine
+	Machines            internal.MachineSet
 }
 
-func (f *fakeManagementCluster) GetMachinesForCluster(ctx context.Context, cluster types.NamespacedName, filters ...internal.MachineFilter) ([]*clusterv1.Machine, error) {
+func (f *fakeManagementCluster) GetMachinesForCluster(ctx context.Context, cluster types.NamespacedName, filters ...internal.MachineFilter) (internal.MachineSet, error) {
 	return f.Machines, nil
 }
 
@@ -1253,14 +1253,14 @@ func TestKubeadmControlPlaneReconciler_scaleUpControlPlane(t *testing.T) {
 		initObjs := []runtime.Object{cluster.DeepCopy(), kcp.DeepCopy(), genericMachineTemplate.DeepCopy()}
 
 		fmc := &fakeManagementCluster{
-			Machines:            []*clusterv1.Machine{},
+			Machines:            internal.NewMachineSet(),
 			ControlPlaneHealthy: true,
 			EtcdHealthy:         true,
 		}
 
 		for i := 0; i < 2; i++ {
 			m, _ := createMachineNodePair(fmt.Sprintf("test-%d", i), cluster, kcp, true)
-			fmc.Machines = append(fmc.Machines, m)
+			fmc.Machines = fmc.Machines.Insert(m)
 			initObjs = append(initObjs, m.DeepCopy())
 		}
 
@@ -1317,14 +1317,14 @@ func TestKubeadmControlPlaneReconciler_scaleDownControlPlane(t *testing.T) {
 		initObjs := []runtime.Object{cluster.DeepCopy(), kcp.DeepCopy(), genericMachineTemplate.DeepCopy()}
 
 		fmc := &fakeManagementCluster{
-			Machines:            []*clusterv1.Machine{},
+			Machines:            internal.NewMachineSet(),
 			ControlPlaneHealthy: true,
 			EtcdHealthy:         true,
 		}
 
 		for i := 0; i < 2; i++ {
 			m, _ := createMachineNodePair(fmt.Sprintf("test-%d", i), cluster, kcp, true)
-			fmc.Machines = append(fmc.Machines, m)
+			fmc.Machines = fmc.Machines.Insert(m)
 			initObjs = append(initObjs, m.DeepCopy())
 		}
 
@@ -1354,14 +1354,14 @@ func TestKubeadmControlPlaneReconciler_scaleDownControlPlane(t *testing.T) {
 		initObjs := []runtime.Object{cluster.DeepCopy(), kcp.DeepCopy(), genericMachineTemplate.DeepCopy()}
 
 		fmc := &fakeManagementCluster{
-			Machines:            []*clusterv1.Machine{},
+			Machines:            internal.NewMachineSet(),
 			ControlPlaneHealthy: true,
 			EtcdHealthy:         true,
 		}
 
 		for i := 0; i < 2; i++ {
 			m, _ := createMachineNodePair(fmt.Sprintf("test-%d", i), cluster, kcp, true)
-			fmc.Machines = append(fmc.Machines, m)
+			fmc.Machines = fmc.Machines.Insert(m)
 			initObjs = append(initObjs, m.DeepCopy())
 		}
 
@@ -1405,12 +1405,12 @@ func TestKubeadmControlPlaneReconciler_upgradeControlPlane(t *testing.T) {
 		initObjs := []runtime.Object{cluster.DeepCopy(), kcp.DeepCopy(), genericMachineTemplate.DeepCopy()}
 
 		fmc := &fakeManagementCluster{
-			Machines: []*clusterv1.Machine{},
+			Machines: internal.NewMachineSet(),
 		}
 
 		for i := 0; i < 3; i++ {
 			m, _ := createMachineNodePair(fmt.Sprintf("test-%d", i), cluster, kcp, true)
-			fmc.Machines = append(fmc.Machines, m)
+			fmc.Machines = fmc.Machines.Insert(m)
 			initObjs = append(initObjs, m.DeepCopy())
 		}
 

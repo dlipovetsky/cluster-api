@@ -25,6 +25,30 @@ import (
 
 type MachineFilter func(machine *clusterv1.Machine) bool
 
+// And returns a MachineFilter function that returns true if all of the given MachineFilters returns true
+func And(filters ...MachineFilter) MachineFilter {
+	return func(machine *clusterv1.Machine) bool {
+		for _, f := range filters {
+			if !f(machine) {
+				return false
+			}
+		}
+		return true
+	}
+}
+
+// Or returns a MachineFilter function that returns true if any of the given MachineFilters returns true
+func Or(filters ...MachineFilter) MachineFilter {
+	return func(machine *clusterv1.Machine) bool {
+		for _, f := range filters {
+			if f(machine) {
+				return true
+			}
+		}
+		return false
+	}
+}
+
 // Not returns a MachineFilter function that returns the opposite of the given MachineFilter
 func Not(mf MachineFilter) MachineFilter {
 	return func(machine *clusterv1.Machine) bool {
@@ -112,46 +136,4 @@ func SelectedForUpgrade() MachineFilter {
 		}
 		return false
 	}
-}
-
-// UnionFilterMachines returns a filtered list of machines that matches the union of the applied filters
-func UnionFilterMachines(machines []*clusterv1.Machine, filters ...MachineFilter) []*clusterv1.Machine {
-	if len(filters) == 0 {
-		return machines
-	}
-	filteredMachines := make([]*clusterv1.Machine, 0, len(machines))
-
-Machine:
-	for _, machine := range machines {
-		for _, filter := range filters {
-			if filter(machine) {
-				filteredMachines = append(filteredMachines, machine)
-				break Machine
-			}
-		}
-	}
-
-	return filteredMachines
-}
-
-// FilterMachines returns a filtered list of machines that matches the intersection of the applied filters
-func FilterMachines(machines []*clusterv1.Machine, filters ...MachineFilter) []*clusterv1.Machine {
-	if len(filters) == 0 {
-		return machines
-	}
-
-	filteredMachines := make([]*clusterv1.Machine, 0, len(machines))
-	for _, machine := range machines {
-		add := true
-		for _, filter := range filters {
-			if !filter(machine) {
-				add = false
-				break
-			}
-		}
-		if add {
-			filteredMachines = append(filteredMachines, machine)
-		}
-	}
-	return filteredMachines
 }

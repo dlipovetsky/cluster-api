@@ -53,7 +53,7 @@ type ManagementCluster struct {
 
 // GetMachinesForCluster returns a list of machines that can be filtered or not.
 // If no filter is supplied then all machines associated with the target cluster are returned.
-func (m *ManagementCluster) GetMachinesForCluster(ctx context.Context, cluster types.NamespacedName, filters ...MachineFilter) ([]*clusterv1.Machine, error) {
+func (m *ManagementCluster) GetMachinesForCluster(ctx context.Context, cluster types.NamespacedName, filters ...MachineFilter) (MachineSet, error) {
 	selector := map[string]string{
 		clusterv1.ClusterLabelName: cluster.Name,
 	}
@@ -62,12 +62,8 @@ func (m *ManagementCluster) GetMachinesForCluster(ctx context.Context, cluster t
 		return nil, errors.Wrap(err, "failed to list machines")
 	}
 
-	machines := make([]*clusterv1.Machine, 0, len(ml.Items))
-	for i := range ml.Items {
-		machines = append(machines, &ml.Items[i])
-	}
-
-	return FilterMachines(machines, filters...), nil
+	machineSet := NewMachineSetFromMachineList(ml)
+	return machineSet.Filter(filters...), nil
 }
 
 // getCluster builds a cluster object.
