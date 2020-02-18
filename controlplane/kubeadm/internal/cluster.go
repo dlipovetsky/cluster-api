@@ -149,7 +149,27 @@ func SelectedForUpgrade() func(machine *clusterv1.Machine) bool {
 	}
 }
 
-// FilterMachines returns a filtered list of machines
+// UnionFilterMachines returns a filtered list of machines that matches the union of the applied filters
+func UnionFilterMachines(machines []*clusterv1.Machine, filters ...func(machine *clusterv1.Machine) bool) []*clusterv1.Machine {
+	if len(filters) == 0 {
+		return machines
+	}
+	filteredMachines := make([]*clusterv1.Machine, 0, len(machines))
+
+Machine:
+	for _, machine := range machines {
+		for _, filter := range filters {
+			if filter(machine) {
+				filteredMachines = append(filteredMachines, machine)
+				break Machine
+			}
+		}
+	}
+
+	return filteredMachines
+}
+
+// FilterMachines returns a filtered list of machines that matches the intersection of the applied filters
 func FilterMachines(machines []*clusterv1.Machine, filters ...func(machine *clusterv1.Machine) bool) []*clusterv1.Machine {
 	if len(filters) == 0 {
 		return machines

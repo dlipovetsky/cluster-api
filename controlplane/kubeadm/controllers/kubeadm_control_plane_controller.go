@@ -237,7 +237,7 @@ func (r *KubeadmControlPlaneReconciler) reconcile(ctx context.Context, cluster *
 	}
 
 	currentConfigurationHash := hash.Compute(&kcp.Spec)
-	requireUpgrade := internal.FilterMachines(
+	requireUpgrade := internal.UnionFilterMachines(
 		ownedMachines,
 		internal.HasOutdatedConfiguration(currentConfigurationHash),
 		internal.OlderThan(kcp.Spec.UpgradeAfter),
@@ -331,7 +331,7 @@ func (r *KubeadmControlPlaneReconciler) upgradeControlPlane(ctx context.Context,
 		logger.Error(err, "failed to retrieve machines for cluster")
 		return ctrl.Result{}, err
 	}
-	requireUpgrade := internal.FilterMachines(
+	requireUpgrade := internal.UnionFilterMachines(
 		ownedMachines,
 		internal.HasOutdatedConfiguration(hash.Compute(&kcp.Spec)),
 		internal.OlderThan(kcp.Spec.UpgradeAfter),
