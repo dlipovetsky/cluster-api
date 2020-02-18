@@ -34,16 +34,16 @@ import (
 	kerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
+
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha3"
 	"sigs.k8s.io/cluster-api/controllers/remote"
-	controlplanev1 "sigs.k8s.io/cluster-api/controlplane/kubeadm/api/v1alpha3"
 	"sigs.k8s.io/cluster-api/controlplane/kubeadm/internal/etcd"
 	etcdutil "sigs.k8s.io/cluster-api/controlplane/kubeadm/internal/etcd/util"
 	"sigs.k8s.io/cluster-api/controlplane/kubeadm/internal/proxy"
 	"sigs.k8s.io/cluster-api/util/certs"
 	"sigs.k8s.io/cluster-api/util/secret"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // ManagementCluster holds operations on the ManagementCluster
@@ -51,149 +51,9 @@ type ManagementCluster struct {
 	Client ctrlclient.Client
 }
 
-// InFailureDomain returns a MachineFilter function to find all machines
-// in a given failure domain
-func InFailureDomain(failureDomain *string) func(machine *clusterv1.Machine) bool {
-	return func(machine *clusterv1.Machine) bool {
-		if machine == nil {
-			return false
-		}
-		if failureDomain == nil {
-			return true
-		}
-		if machine.Spec.FailureDomain == nil {
-			return false
-		}
-		return *machine.Spec.FailureDomain == *failureDomain
-	}
-}
-
-// OwnedControlPlaneMachines returns a MachineFilter function to find all owned control plane machines.
-// Usage: managementCluster.GetMachinesForCluster(ctx, cluster, OwnedControlPlaneMachines(controlPlane.Name))
-func OwnedControlPlaneMachines(controlPlaneName string) func(machine *clusterv1.Machine) bool {
-	return func(machine *clusterv1.Machine) bool {
-		if machine == nil {
-			return false
-		}
-		controllerRef := metav1.GetControllerOf(machine)
-		if controllerRef == nil {
-			return false
-		}
-		return controllerRef.Kind == "KubeadmControlPlane" && controllerRef.Name == controlPlaneName
-	}
-}
-
-// HasDeletionTimestamp returns a MachineFilter function to find all machines
-// that have a deletion timestamp.
-func HasDeletionTimestamp() func(machine *clusterv1.Machine) bool {
-	return func(machine *clusterv1.Machine) bool {
-		return !WithoutDeletionTimestamp()(machine)
-	}
-}
-
-// WithoutDeletionTimestamp returns a MachineFilter function to find all machines
-// that do not have a deletion timestamp.
-func WithoutDeletionTimestamp() func(machine *clusterv1.Machine) bool {
-	return func(machine *clusterv1.Machine) bool {
-		if machine == nil {
-			return false
-		}
-		return machine.DeletionTimestamp.IsZero()
-	}
-}
-
-// HasOutdatedConfiguration returns a MachineFilter function to find all machines
-// that do not match a given KubeadmControlPlane configuration hash.
-func HasOutdatedConfiguration(configHash string) func(machine *clusterv1.Machine) bool {
-	return func(machine *clusterv1.Machine) bool {
-		return !MatchesConfigurationHash(configHash)(machine)
-	}
-}
-
-// MatchesConfigurationHash returns a MachineFilter function to find all machines
-// that match a given KubeadmControlPlane configuration hash.
-func MatchesConfigurationHash(configHash string) func(machine *clusterv1.Machine) bool {
-	return func(machine *clusterv1.Machine) bool {
-		if machine == nil {
-			return false
-		}
-		if hash, ok := machine.Labels[controlplanev1.KubeadmControlPlaneHashLabelKey]; ok {
-			return hash == configHash
-		}
-		return false
-	}
-}
-
-// OlderThan returns a MachineFilter function to find all machines
-// that have a CreationTimestamp earlier than the given time.
-func OlderThan(t *metav1.Time) func(machine *clusterv1.Machine) bool {
-	return func(machine *clusterv1.Machine) bool {
-		if machine == nil {
-			return false
-		}
-		return machine.CreationTimestamp.Before(t)
-	}
-}
-
-// SelectedForUpgrade returns a MachineFilter function to find all machines that have the
-// controlplanev1.SelectedForUpgradeLabel set.
-func SelectedForUpgrade() func(machine *clusterv1.Machine) bool {
-	return func(machine *clusterv1.Machine) bool {
-		if machine == nil || machine.Labels == nil {
-			return false
-		}
-		if _, ok := machine.Labels[controlplanev1.SelectedForUpgradeLabel]; ok {
-			return true
-		}
-		return false
-	}
-}
-
-// UnionFilterMachines returns a filtered list of machines that matches the union of the applied filters
-func UnionFilterMachines(machines []*clusterv1.Machine, filters ...func(machine *clusterv1.Machine) bool) []*clusterv1.Machine {
-	if len(filters) == 0 {
-		return machines
-	}
-	filteredMachines := make([]*clusterv1.Machine, 0, len(machines))
-
-Machine:
-	for _, machine := range machines {
-		for _, filter := range filters {
-			if filter(machine) {
-				filteredMachines = append(filteredMachines, machine)
-				break Machine
-			}
-		}
-	}
-
-	return filteredMachines
-}
-
-// FilterMachines returns a filtered list of machines that matches the intersection of the applied filters
-func FilterMachines(machines []*clusterv1.Machine, filters ...func(machine *clusterv1.Machine) bool) []*clusterv1.Machine {
-	if len(filters) == 0 {
-		return machines
-	}
-
-	filteredMachines := make([]*clusterv1.Machine, 0, len(machines))
-	for _, machine := range machines {
-		add := true
-		for _, filter := range filters {
-			if !filter(machine) {
-				add = false
-				break
-			}
-		}
-		if add {
-			filteredMachines = append(filteredMachines, machine)
-		}
-	}
-	return filteredMachines
-}
-
 // GetMachinesForCluster returns a list of machines that can be filtered or not.
 // If no filter is supplied then all machines associated with the target cluster are returned.
-func (m *ManagementCluster) GetMachinesForCluster(ctx context.Context, cluster types.NamespacedName, filters ...func(machine *clusterv1.Machine) bool) ([]*clusterv1.Machine, error) {
+func (m *ManagementCluster) GetMachinesForCluster(ctx context.Context, cluster types.NamespacedName, filters ...MachineFilter) ([]*clusterv1.Machine, error) {
 	selector := map[string]string{
 		clusterv1.ClusterLabelName: cluster.Name,
 	}

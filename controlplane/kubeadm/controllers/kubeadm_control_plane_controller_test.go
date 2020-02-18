@@ -1223,7 +1223,7 @@ type fakeManagementCluster struct {
 	Machines            []*clusterv1.Machine
 }
 
-func (f *fakeManagementCluster) GetMachinesForCluster(ctx context.Context, cluster types.NamespacedName, filters ...func(machine *clusterv1.Machine) bool) ([]*clusterv1.Machine, error) {
+func (f *fakeManagementCluster) GetMachinesForCluster(ctx context.Context, cluster types.NamespacedName, filters ...internal.MachineFilter) ([]*clusterv1.Machine, error) {
 	return f.Machines, nil
 }
 

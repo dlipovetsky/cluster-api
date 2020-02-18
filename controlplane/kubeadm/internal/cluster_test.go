@@ -20,18 +20,14 @@ import (
 	"context"
 	"fmt"
 	"testing"
-	"time"
 
-	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha3"
-	controlplanev1 "sigs.k8s.io/cluster-api/controlplane/kubeadm/api/v1alpha3"
 )
 
 func podReady(isReady corev1.ConditionStatus) corev1.PodCondition {
@@ -246,160 +242,4 @@ func (f *fakeClient) List(_ context.Context, list runtime.Object, _ ...client.Li
 		return fmt.Errorf("unknown type: %s", l)
 	}
 	return nil
-}
-
-func TestHasDeletionTimestamp(t *testing.T) {
-	t.Run("machine with deletion timestamp returns true", func(t *testing.T) {
-		g := NewWithT(t)
-		m := &clusterv1.Machine{}
-		now := metav1.Now()
-		m.SetDeletionTimestamp(&now)
-		g.Expect(HasDeletionTimestamp()(m)).To(BeTrue())
-	})
-	t.Run("machine with nil deletion timestamp returns false", func(t *testing.T) {
-		g := NewWithT(t)
-		m := &clusterv1.Machine{}
-		g.Expect(HasDeletionTimestamp()(m)).To(BeFalse())
-	})
-	t.Run("machine with zero deletion timestamp returns false", func(t *testing.T) {
-		g := NewWithT(t)
-		m := &clusterv1.Machine{}
-		zero := metav1.NewTime(time.Time{})
-		m.SetDeletionTimestamp(&zero)
-		g.Expect(HasDeletionTimestamp()(m)).To(BeFalse())
-	})
-}
-
-func TestWithoutDeletionTimestamp(t *testing.T) {
-	t.Run("machine with deletion timestamp returns false", func(t *testing.T) {
-		g := NewWithT(t)
-		m := &clusterv1.Machine{}
-		now := metav1.Now()
-		m.SetDeletionTimestamp(&now)
-		g.Expect(WithoutDeletionTimestamp()(m)).To(BeFalse())
-	})
-	t.Run("machine with nil deletion timestamp returns true", func(t *testing.T) {
-		g := NewWithT(t)
-		m := &clusterv1.Machine{}
-		g.Expect(WithoutDeletionTimestamp()(m)).To(BeTrue())
-	})
-	t.Run("machine with zero deletion timestamp returns true", func(t *testing.T) {
-		g := NewWithT(t)
-		m := &clusterv1.Machine{}
-		zero := metav1.NewTime(time.Time{})
-		m.SetDeletionTimestamp(&zero)
-		g.Expect(WithoutDeletionTimestamp()(m)).To(BeTrue())
-	})
-}
-
-func TestMatchesConfigurationHash(t *testing.T) {
-	t.Run("machine with configuration hash returns true", func(t *testing.T) {
-		g := NewWithT(t)
-		m := &clusterv1.Machine{}
-		m.SetLabels(ControlPlaneLabelsForClusterWithHash("test", "hashValue"))
-		g.Expect(MatchesConfigurationHash("hashValue")(m)).To(BeTrue())
-	})
-	t.Run("machine with wrong configuration hash returns false", func(t *testing.T) {
-		g := NewWithT(t)
-		m := &clusterv1.Machine{}
-		m.SetLabels(ControlPlaneLabelsForClusterWithHash("test", "notHashValue"))
-		g.Expect(MatchesConfigurationHash("hashValue")(m)).To(BeFalse())
-	})
-	t.Run("machine without configuration hash returns false", func(t *testing.T) {
-		g := NewWithT(t)
-		m := &clusterv1.Machine{}
-		g.Expect(MatchesConfigurationHash("hashValue")(m)).To(BeFalse())
-	})
-}
-
-func TestHasOutdatedConfiguration(t *testing.T) {
-	t.Run("machine with configuration hash returns true", func(t *testing.T) {
-		g := NewWithT(t)
-		m := &clusterv1.Machine{}
-		m.SetLabels(ControlPlaneLabelsForClusterWithHash("test", "hashValue"))
-		g.Expect(HasOutdatedConfiguration("hashValue")(m)).To(BeFalse())
-	})
-	t.Run("machine with wrong configuration hash returns false", func(t *testing.T) {
-		g := NewWithT(t)
-		m := &clusterv1.Machine{}
-		m.SetLabels(ControlPlaneLabelsForClusterWithHash("test", "notHashValue"))
-		g.Expect(HasOutdatedConfiguration("hashValue")(m)).To(BeTrue())
-	})
-	t.Run("machine without configuration hash returns false", func(t *testing.T) {
-		g := NewWithT(t)
-		m := &clusterv1.Machine{}
-		g.Expect(HasOutdatedConfiguration("hashValue")(m)).To(BeTrue())
-	})
-}
-
-func TestOlderThan(t *testing.T) {
-	t.Run("machine with creation timestamp older than given returns true", func(t *testing.T) {
-		g := NewWithT(t)
-		m := &clusterv1.Machine{}
-		m.SetCreationTimestamp(metav1.NewTime(time.Now().Add(-1 * time.Hour)))
-		now := metav1.Now()
-		g.Expect(OlderThan(&now)(m)).To(BeTrue())
-	})
-	t.Run("machine with creation timestamp equal to given returns false", func(t *testing.T) {
-		g := NewWithT(t)
-		m := &clusterv1.Machine{}
-		now := metav1.Now()
-		m.SetCreationTimestamp(now)
-		g.Expect(OlderThan(&now)(m)).To(BeFalse())
-	})
-	t.Run("machine with creation timestamp after given returns false", func(t *testing.T) {
-		g := NewWithT(t)
-		m := &clusterv1.Machine{}
-		m.SetCreationTimestamp(metav1.NewTime(time.Now().Add(+1 * time.Hour)))
-		now := metav1.Now()
-		g.Expect(OlderThan(&now)(m)).To(BeFalse())
-	})
-}
-
-func TestSelectedForUpgrade(t *testing.T) {
-	t.Run("machine with selected for upgrade label returns true", func(t *testing.T) {
-		g := NewWithT(t)
-		m := &clusterv1.Machine{}
-		m.SetLabels(map[string]string{controlplanev1.SelectedForUpgradeLabel: ""})
-		g.Expect(SelectedForUpgrade()(m)).To(BeTrue())
-	})
-	t.Run("machine with selected for upgrade label with non-empty value returns true", func(t *testing.T) {
-		g := NewWithT(t)
-		m := &clusterv1.Machine{}
-		m.SetLabels(map[string]string{controlplanev1.SelectedForUpgradeLabel: "blue"})
-		g.Expect(SelectedForUpgrade()(m)).To(BeTrue())
-	})
-	t.Run("machine without selected for upgrade label returns false", func(t *testing.T) {
-		g := NewWithT(t)
-		m := &clusterv1.Machine{}
-		g.Expect(SelectedForUpgrade()(m)).To(BeFalse())
-	})
-}
-
-func TestInFailureDomain(t *testing.T) {
-	t.Run("machine with given failure domain returns true", func(t *testing.T) {
-		g := NewWithT(t)
-		m := &clusterv1.Machine{Spec: clusterv1.MachineSpec{FailureDomain: pointer.StringPtr("test")}}
-		g.Expect(InFailureDomain(pointer.StringPtr("test"))(m)).To(BeTrue())
-	})
-	t.Run("machine with a different failure domain returns false", func(t *testing.T) {
-		g := NewWithT(t)
-		m := &clusterv1.Machine{Spec: clusterv1.MachineSpec{FailureDomain: pointer.StringPtr("notTest")}}
-		g.Expect(InFailureDomain(pointer.StringPtr("test"))(m)).To(BeFalse())
-	})
-	t.Run("machine without failure domain returns false", func(t *testing.T) {
-		g := NewWithT(t)
-		m := &clusterv1.Machine{}
-		g.Expect(InFailureDomain(pointer.StringPtr("test"))(m)).To(BeFalse())
-	})
-	t.Run("machine without failure domain returns true, when nil used for failure domain", func(t *testing.T) {
-		g := NewWithT(t)
-		m := &clusterv1.Machine{}
-		g.Expect(InFailureDomain(nil)(m)).To(BeTrue())
-	})
-	t.Run("machine with failure domain returns true, when nil used for failure domain", func(t *testing.T) {
-		g := NewWithT(t)
-		m := &clusterv1.Machine{Spec: clusterv1.MachineSpec{FailureDomain: pointer.StringPtr("notTest")}}
-		g.Expect(InFailureDomain(nil)(m)).To(BeTrue())
-	})
 }
