@@ -1273,7 +1273,7 @@ func TestKubeadmControlPlaneReconciler_scaleUpControlPlane(t *testing.T) {
 			recorder:          record.NewFakeRecorder(32),
 		}
 
-		result, err := r.scaleUpControlPlane(context.Background(), cluster, kcp, r.Log)
+		result, err := r.scaleUpControlPlane(context.Background(), cluster, kcp, nil, r.Log)
 		g.Expect(result).To(Equal(ctrl.Result{Requeue: true}))
 		g.Expect(err).ToNot(HaveOccurred())
 
@@ -1298,13 +1298,13 @@ func TestKubeadmControlPlaneReconciler_scaleUpControlPlane(t *testing.T) {
 
 		result, err := r.scaleUpControlPlane(context.Background(), cluster, kcp, nil, r.Log)
 		g.Expect(result).To(Equal(ctrl.Result{RequeueAfter: HealthCheckFailedRequeueAfter}))
-		g.Expect(err).To(HaveOccurred())
+		g.Expect(err).NotTo(HaveOccurred())
 
 		fmc.ControlPlaneHealthy = false
 		fmc.EtcdHealthy = true
 		result, err = r.scaleUpControlPlane(context.Background(), cluster, kcp, nil, r.Log)
 		g.Expect(result).To(Equal(ctrl.Result{RequeueAfter: HealthCheckFailedRequeueAfter}))
-		g.Expect(err).To(HaveOccurred())
+		g.Expect(err).NotTo(HaveOccurred())
 
 	})
 }
@@ -1379,7 +1379,7 @@ func TestKubeadmControlPlaneReconciler_scaleDownControlPlane(t *testing.T) {
 		fmc.ControlPlaneHealthy = false
 		fmc.EtcdHealthy = true
 		result, err := r.scaleDownControlPlane(context.Background(), cluster, kcp, r.Log)
-		g.Expect(err).To(HaveOccurred())
+		g.Expect(err).NotTo(HaveOccurred())
 		g.Expect(result).To(Equal(ctrl.Result{RequeueAfter: HealthCheckFailedRequeueAfter}))
 		g.Expect(fakeClient.List(context.Background(), &controlPlaneMachines)).To(Succeed())
 		g.Expect(controlPlaneMachines.Items).To(HaveLen(2))
@@ -1387,7 +1387,7 @@ func TestKubeadmControlPlaneReconciler_scaleDownControlPlane(t *testing.T) {
 		fmc.ControlPlaneHealthy = true
 		fmc.EtcdHealthy = false
 		result, err = r.scaleDownControlPlane(context.Background(), cluster, kcp, r.Log)
-		g.Expect(err).To(HaveOccurred())
+		g.Expect(err).NotTo(HaveOccurred())
 		g.Expect(result).To(Equal(ctrl.Result{RequeueAfter: HealthCheckFailedRequeueAfter}))
 		g.Expect(fakeClient.List(context.Background(), &controlPlaneMachines)).To(Succeed())
 		g.Expect(controlPlaneMachines.Items).To(HaveLen(2))
@@ -1431,7 +1431,7 @@ func TestKubeadmControlPlaneReconciler_upgradeControlPlane(t *testing.T) {
 		fmc.ControlPlaneHealthy = false
 		fmc.EtcdHealthy = true
 		result, err := r.upgradeControlPlane(context.Background(), cluster, kcp, r.Log)
-		g.Expect(err).To(HaveOccurred())
+		g.Expect(err).NotTo(HaveOccurred())
 		g.Expect(result).To(Equal(ctrl.Result{RequeueAfter: HealthCheckFailedRequeueAfter}))
 		g.Expect(fakeClient.List(context.Background(), &controlPlaneMachines)).To(Succeed())
 		g.Expect(controlPlaneMachines.Items).To(HaveLen(3))
@@ -1440,7 +1440,7 @@ func TestKubeadmControlPlaneReconciler_upgradeControlPlane(t *testing.T) {
 		fmc.ControlPlaneHealthy = true
 		fmc.EtcdHealthy = false
 		result, err = r.upgradeControlPlane(context.Background(), cluster, kcp, r.Log)
-		g.Expect(err).To(HaveOccurred())
+		g.Expect(err).NotTo(HaveOccurred())
 		g.Expect(result).To(Equal(ctrl.Result{RequeueAfter: HealthCheckFailedRequeueAfter}))
 		g.Expect(fakeClient.List(context.Background(), &controlPlaneMachines)).To(Succeed())
 		g.Expect(controlPlaneMachines.Items).To(HaveLen(3))
