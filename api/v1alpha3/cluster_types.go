@@ -219,7 +219,7 @@ func (in FailureDomains) FilterControlPlane() FailureDomains {
 
 // GetIDs returns a slice containing the ids for failure domains
 func (in FailureDomains) GetIDs() []*string {
-	var ids []*string
+	ids := make([]*string, 0, len(in))
 	for id := range in {
 		ids = append(ids, pointer.StringPtr(id))
 	}
