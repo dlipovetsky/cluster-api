@@ -70,6 +70,7 @@ type managementCluster interface {
 	TargetClusterControlPlaneIsHealthy(ctx context.Context, clusterKey types.NamespacedName, controlPlaneName string) error
 	TargetClusterEtcdIsHealthy(ctx context.Context, clusterKey types.NamespacedName, controlPlaneName string) error
 	RemoveEtcdMemberForMachine(ctx context.Context, clusterKey types.NamespacedName, machine *clusterv1.Machine) error
+	RemoveMachineFromKubeadmConfigMap(ctx context.Context, clusterKey types.NamespacedName, machine *clusterv1.Machine) error
 }
 
 // +kubebuilder:rbac:groups=core,resources=events,verbs=get;list;watch;create;patch
@@ -465,7 +466,11 @@ func (r *KubeadmControlPlaneReconciler) scaleDownControlPlane(ctx context.Contex
 		logger.Error(err, "failed to remove etcd member for machine")
 		return ctrl.Result{}, err
 	}
-	// TODO: Update the kubeadm configmap
+
+	if err := r.managementCluster.RemoveMachineFromKubeadmConfigMap(ctx, clusterKey(cluster), machineToDelete); err != nil {
+		logger.Error(err, "failed to remove machine from kubeadm ConfigMap")
+		return ctrl.Result{}, err
+	}
 
 	if err := r.Client.Delete(ctx, machineToDelete); err != nil && !apierrors.IsNotFound(err) {
 		logger.Error(err, "failed to delete control plane machine")
