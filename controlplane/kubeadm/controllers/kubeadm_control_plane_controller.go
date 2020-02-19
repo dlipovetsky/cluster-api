@@ -368,7 +368,7 @@ func (r *KubeadmControlPlaneReconciler) upgradeControlPlane(ctx context.Context,
 func (r *KubeadmControlPlaneReconciler) selectMachineForUpgrade(ctx context.Context, cluster *clusterv1.Cluster, requireUpgrade internal.MachineSet) (*clusterv1.Machine, error) {
 	failureDomain := r.failureDomainForScaleDown(cluster, requireUpgrade)
 
-	inFailureDomain := requireUpgrade.Filter(internal.InFailureDomain(failureDomain))
+	inFailureDomain := requireUpgrade.Filter(internal.InFailureDomains(failureDomain))
 	oldest := inFailureDomain.Oldest()
 	if oldest == nil {
 		return nil, errors.New("failed to pick control plane Machine to delete")
@@ -451,7 +451,7 @@ func (r *KubeadmControlPlaneReconciler) scaleDownControlPlane(ctx context.Contex
 	}
 
 	failureDomain := r.failureDomainForScaleDown(cluster, machines)
-	machinesInFailureDomain := machines.Filter(internal.InFailureDomain(failureDomain))
+	machinesInFailureDomain := machines.Filter(internal.InFailureDomains(failureDomain))
 
 	machineToDelete := machinesInFailureDomain.Oldest()
 	if machineToDelete == nil {
@@ -585,16 +585,27 @@ func (r *KubeadmControlPlaneReconciler) generateKubeadmConfig(ctx context.Contex
 
 func (r *KubeadmControlPlaneReconciler) failureDomainForScaleDown(cluster *clusterv1.Cluster, machines internal.MachineSet) *string {
 	// Don't do anything if there are no failure domains defined on the cluster.
-	if len(cluster.Status.FailureDomains) == 0 {
+	if len(cluster.Status.FailureDomains.FilterControlPlane()) == 0 {
 		return nil
 	}
+
+	// See if there are any Machines that are not in currently defined failure domains first.
+	notInFailureDomains := machines.Filter(internal.Not(internal.InFailureDomains(cluster.Status.FailureDomains.FilterControlPlane().GetIDs()...)))
+	if len(notInFailureDomains) > 0 {
+		// return the failure domain for the oldest Machine not in the current list of failure domains
+		// this could be either nil (no failure domain defined) or a failure domain that is no longer defined
+		// in the cluster status.
+		return notInFailureDomains.Oldest().Spec.FailureDomain
+	}
+
+	// Otherwise pick the currently known failure domain with the most Machines
 	failureDomain := internal.PickMost(cluster.Status.FailureDomains.FilterControlPlane(), machines)
 	return &failureDomain
 }
 
 func (r *KubeadmControlPlaneReconciler) failureDomainForScaleUp(cluster *clusterv1.Cluster, machines internal.MachineSet) *string {
 	// Don't do anything if there are no failure domains defined on the cluster.
-	if len(cluster.Status.FailureDomains) == 0 {
+	if len(cluster.Status.FailureDomains.FilterControlPlane()) == 0 {
 		return nil
 	}
 	failureDomain := internal.PickFewest(cluster.Status.FailureDomains.FilterControlPlane(), machines)
