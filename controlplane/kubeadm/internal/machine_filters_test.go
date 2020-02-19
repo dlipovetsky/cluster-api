@@ -141,26 +141,26 @@ func TestInFailureDomain(t *testing.T) {
 	t.Run("machine with given failure domain returns true", func(t *testing.T) {
 		g := gomega.NewWithT(t)
 		m := &clusterv1.Machine{Spec: clusterv1.MachineSpec{FailureDomain: pointer.StringPtr("test")}}
-		g.Expect(InFailureDomain(pointer.StringPtr("test"))(m)).To(gomega.BeTrue())
+		g.Expect(InFailureDomains(pointer.StringPtr("test"))(m)).To(gomega.BeTrue())
 	})
 	t.Run("machine with a different failure domain returns false", func(t *testing.T) {
 		g := gomega.NewWithT(t)
 		m := &clusterv1.Machine{Spec: clusterv1.MachineSpec{FailureDomain: pointer.StringPtr("notTest")}}
-		g.Expect(InFailureDomain(pointer.StringPtr("test"))(m)).To(gomega.BeFalse())
+		g.Expect(InFailureDomains(pointer.StringPtr("test"), pointer.StringPtr("foo"))(m)).To(gomega.BeFalse())
 	})
 	t.Run("machine without failure domain returns false", func(t *testing.T) {
 		g := gomega.NewWithT(t)
 		m := &clusterv1.Machine{}
-		g.Expect(InFailureDomain(pointer.StringPtr("test"))(m)).To(gomega.BeFalse())
+		g.Expect(InFailureDomains(pointer.StringPtr("test"))(m)).To(gomega.BeFalse())
 	})
 	t.Run("machine without failure domain returns true, when nil used for failure domain", func(t *testing.T) {
 		g := gomega.NewWithT(t)
 		m := &clusterv1.Machine{}
-		g.Expect(InFailureDomain(nil)(m)).To(gomega.BeTrue())
+		g.Expect(InFailureDomains(nil)(m)).To(gomega.BeTrue())
 	})
-	t.Run("machine with failure domain returns true, when nil used for failure domain", func(t *testing.T) {
+	t.Run("machine with failure domain returns true, when one of multiple failure domains match", func(t *testing.T) {
 		g := gomega.NewWithT(t)
-		m := &clusterv1.Machine{Spec: clusterv1.MachineSpec{FailureDomain: pointer.StringPtr("notTest")}}
-		g.Expect(InFailureDomain(nil)(m)).To(gomega.BeTrue())
+		m := &clusterv1.Machine{Spec: clusterv1.MachineSpec{FailureDomain: pointer.StringPtr("test")}}
+		g.Expect(InFailureDomains(pointer.StringPtr("foo"), pointer.StringPtr("test"))(m)).To(gomega.BeTrue())
 	})
 }

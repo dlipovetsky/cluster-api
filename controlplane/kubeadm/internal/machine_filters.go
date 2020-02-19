@@ -56,20 +56,29 @@ func Not(mf MachineFilter) MachineFilter {
 	}
 }
 
-// InFailureDomain returns a MachineFilter function to find all machines
-// in a given failure domain
-func InFailureDomain(failureDomain *string) MachineFilter {
+// InFailureDomains returns a MachineFilter function to find all machines
+// in any of the given failure domains
+func InFailureDomains(failureDomains ...*string) MachineFilter {
 	return func(machine *clusterv1.Machine) bool {
 		if machine == nil {
 			return false
 		}
-		if failureDomain == nil {
-			return true
+		for i := range failureDomains {
+			fd := failureDomains[i]
+			if fd == nil {
+				if fd == machine.Spec.FailureDomain {
+					return true
+				}
+				continue
+			}
+			if machine.Spec.FailureDomain == nil {
+				continue
+			}
+			if *fd == *machine.Spec.FailureDomain {
+				return true
+			}
 		}
-		if machine.Spec.FailureDomain == nil {
-			return false
-		}
-		return *machine.Spec.FailureDomain == *failureDomain
+		return false
 	}
 }
 
