@@ -1,0 +1,20 @@
+@startuml
+skinparam ActivityBackgroundColor lightgreen
+skinparam ActivityDiamondBackgroundColor lightblue
+' skinparam activityFontSize 16
+' skinparam activityDiamondFontSize 16
+' skinparam activityArrowFontSize 16
+
+title Kubeadm Control Plane: Scale Up
+
+start
+
+if (Current etcd members are healthy) then (yes)
+    :Add etcd member
+    *requires quorum
+    *cannot cause quorum loss;
+endif
+:Requeue;
+stop
+
+@enduml
