@@ -1,0 +1,37 @@
+@startuml
+skinparam ActivityBackgroundColor lightgreen
+skinparam ActivityDiamondBackgroundColor lightblue
+skinparam activityFontSize 16
+skinparam activityDiamondFontSize 16
+skinparam activityArrowFontSize 16
+
+title Kubeadm Control Plane: Scale Down
+
+start
+
+if (A Machine is picked) then (yes)
+    if (Etcd member exists) then (yes)
+        if (Other etcd members are healthy) then (yes)
+            :Remove etcd member
+            *requires quorum
+            *cannot cause quorum loss;
+        else (no)
+        endif
+    else (no)
+        if (Kubeadm ConfigMap\nAPI Endpoint exists) then (yes)
+            :Remove API Endpoint
+            from kubeadm ConfigMap;
+        else (no)
+            :Delete Machine;
+        endif
+    endif
+else (no)
+    if (At least 1 other control\nplane replica is healthy) then (yes)
+        :Pick Machine;
+    else (no)
+    endif
+endif
+:Requeue;
+stop
+
+@enduml
