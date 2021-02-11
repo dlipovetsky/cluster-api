@@ -130,6 +130,7 @@ FROM golang:1.13.15 as tilt-helper
 RUN wget --output-document /restart.sh --quiet https://raw.githubusercontent.com/windmilleng/rerun-process-wrapper/master/restart.sh  && \
     wget --output-document /start.sh --quiet https://raw.githubusercontent.com/windmilleng/rerun-process-wrapper/master/start.sh && \
     chmod +x /start.sh && chmod +x /restart.sh
+RUN go get github.com/go-delve/delve/cmd/dlv
 """
 
 tilt_dockerfile_header = """
@@ -137,6 +138,7 @@ FROM gcr.io/distroless/base:debug as tilt
 WORKDIR /
 COPY --from=tilt-helper /start.sh .
 COPY --from=tilt-helper /restart.sh .
+COPY --from=tilt-helper /go/bin/dlv .
 COPY manager .
 """
 
@@ -189,7 +191,7 @@ def enable_provider(name):
     # manager_build_path or the main.go must be provided via go_main option. The binary is written to .tiltbuild/manager.
     local_resource(
         name + "_manager",
-        cmd = "cd " + context + ';mkdir -p .tiltbuild;CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags \'-extldflags "-static"\' -o .tiltbuild/manager ' + go_main,
+        cmd = "cd " + context + ';mkdir -p .tiltbuild;CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -gcflags "-N -l" -ldflags \'-extldflags "-static"\' -o .tiltbuild/manager ' + go_main,
         deps = live_reload_deps,
     )
 
@@ -205,7 +207,7 @@ def enable_provider(name):
 
     # Set up an image build for the provider. The live update configuration syncs the output from the local_resource
     # build into the container.
-    entrypoint = ["sh", "/start.sh", "/manager"]
+    entrypoint = ["sh", "/start.sh", "/dlv", "--listen=:40000", "--api-version=2", "--headless=true", "exec", "--continue", "--accept-multiclient", "/manager", "--"]
     provider_args = extra_args.get(name)
     if provider_args:
         entrypoint.extend(provider_args)

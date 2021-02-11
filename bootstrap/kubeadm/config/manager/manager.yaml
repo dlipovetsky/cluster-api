@@ -23,6 +23,9 @@ spec:
         - --feature-gates=MachinePool=${EXP_MACHINE_POOL:=false}
         image: controller:latest
         name: manager
+        ports:
+        - containerPort: 40000
+          name: dlv
       terminationGracePeriodSeconds: 10
       tolerations:
         - effect: NoSchedule

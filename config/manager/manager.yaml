@@ -28,6 +28,8 @@ spec:
         - containerPort: 9440
           name: healthz
           protocol: TCP
+        - containerPort: 40000
+          name: dlv
         readinessProbe:
           httpGet:
             path: /readyz
