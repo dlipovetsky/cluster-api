@@ -31,6 +31,9 @@ extra_args = settings.get("extra_args", {})
 providers = {
     "core": {
         "context": ".",
+        "workload": "capi-controller-manager:deployment:capi-system",
+        "container_port": "40000",
+        "host_port": "60001",
         "image": "gcr.io/k8s-staging-cluster-api/cluster-api-controller",
         "live_reload_deps": [
             "main.go",
@@ -48,6 +51,9 @@ providers = {
     },
     "kubeadm-bootstrap": {
         "context": "bootstrap/kubeadm",
+        "workload": "capi-kubeadm-bootstrap-controller-manager:deployment:capi-kubeadm-bootstrap-system",
+        "container_port": "40000",
+        "host_port": "60002",
         "image": "gcr.io/k8s-staging-cluster-api/kubeadm-bootstrap-controller",
         "live_reload_deps": [
             "main.go",
@@ -58,6 +64,9 @@ providers = {
     },
     "kubeadm-control-plane": {
         "context": "controlplane/kubeadm",
+        "workload": "capi-kubeadm-control-plane-controller-manager:deployment:capi-kubeadm-control-plane-system",
+        "container_port": "40000",
+        "host_port": "60003",
         "image": "gcr.io/k8s-staging-cluster-api/kubeadm-control-plane-controller",
         "live_reload_deps": [
             "main.go",
@@ -68,6 +77,9 @@ providers = {
     },
     "docker": {
         "context": "test/infrastructure/docker",
+        "workload": "capd-controller-manager",
+        "container_port": "40000",
+        "host_port": "60004",
         "image": "gcr.io/k8s-staging-cluster-api/capd-manager",
         "live_reload_deps": [
             "main.go",
@@ -235,6 +247,9 @@ def enable_provider(name):
         # Apply the kustomized yaml for this provider
         yaml = str(kustomize_with_envsubst(context + "/config"))
         k8s_yaml(blob(yaml))
+
+    port_forward = p.get("host_port") + ":" + p.get("container_port")
+    k8s_resource(workload=p.get("workload"), port_forwards=[port_forward])
 
 # Prepull all the cert-manager images to your local environment and then load them directly into kind. This speeds up
 # setup if you're repeatedly destroying and recreating your kind cluster, as it doesn't have to pull the images over
