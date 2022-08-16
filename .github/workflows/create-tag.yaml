@@ -1,0 +1,18 @@
+name: Create tag when PR is merged
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  checks: write # Allow write access to repository.
+
+jobs:
+  create_tag:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      # Checkout repository
+      - uses: actions/checkout@v3
+      - run: |
+          echo Creating a tag
