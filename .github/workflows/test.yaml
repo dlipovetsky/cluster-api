@@ -1,0 +1,20 @@
+name: Run unit and integration tests against any new commit
+
+on: [ push ]
+
+permissions:
+  checks: write # Allow write access to repository.
+
+jobs:
+  test:
+    name: Run unit and integration tests
+    runs-on: ubuntu-latest
+    steps:
+      # Checkout repository
+      - uses: actions/checkout@v3
+      # Set up go
+      - uses: actions/setup-go@v3
+        with:
+          go-version: 1.18
+      - run: |
+          make test

@@ -1,0 +1,18 @@
+name: Release when tag is created
+
+on:
+  push:
+    tags:
+      - 'downstream-v.*'
+
+permissions:
+  checks: write # Allow write access to repository.
+
+jobs:
+  create_tag:
+    runs-on: ubuntu-latest
+    steps:
+      # Checkout repository
+      - uses: actions/checkout@v3
+      - run: |
+          echo Releasing
