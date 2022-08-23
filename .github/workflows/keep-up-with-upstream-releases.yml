@@ -1,0 +1,23 @@
+name: Keep up with upstream releases
+
+on:
+  schedule:
+    # At 06:00 AM, Monday through Friday
+    - cron: "0 6 * * MON-FRI"
+
+permissions:
+  # Allow to update the PR.
+  contents: write
+
+jobs:
+  keep-up-with-upstream-releases:
+  - runs-on: ubuntu-latest
+  steps:
+  - name: Create downstream branches
+    env:
+      # Note: Pattern format is a PCRE regular expression.
+      GIT_TAG_PATTERN: '^(v1.1.[3-9][0-9]?|v1.2.[0-99])$'
+    run: bash create-downstream-branches.sh
+  - name: Create patch pull requests
+    env:
+    run: bash create-downstream-branches.sh

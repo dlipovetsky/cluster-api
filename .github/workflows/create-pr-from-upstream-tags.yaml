@@ -1,0 +1,41 @@
+# Clone downstream repo.
+# git clone https://github.com/mesosphere/cluster-api
+
+# Create upstream remote and fetch branches and tags.
+# git remote add upstream https://github.com/kubernetes-sigs/cluster-api.git --fetch --tags
+
+# Find latest tag in upstream release branch.
+# TAG=$(git describe --abbrev=0 upstream/release-1.1)
+
+# Make a copy of the upstream release branch in the downstream repo.
+# Pull upstream release branch up to and including the newest tag, since we don't want unreleased commits.
+# git checkout release-1.1
+# git pull upstream $TAG
+# git push origin release-1.1
+
+# Checkout downstream release branch.
+# NOTE: This branch contains any downstream changes, and is separate from the copy of the upstream release branch.
+# git checkout downstream-release-1.1
+
+# Count the commits between the downstream release branch and the latest upstream tag.
+# COUNT_UPSTREAM_COMMITS_AHEAD=$(git rev-list --count downstream-release-1.1..$TAG)
+
+# If $COUNT_UPSTREAM_COMMITS_AHEAD == 0, then there is nothing to do, so exit.
+
+# Checkout temporary branch from downstream branch.
+# git checkout -b tmp-release-1.1 release-1.1
+
+# Remove all upstream GHA workflows (remove all files in .github/workflows).
+# git rm -r .github/workflows
+# TODO: 
+# git commit .github/workflows -m "ci: Remove upstream GitHub Actions workflows"
+
+# Add all downstream GHA workflows that should run in a release branch (add files from 'actions' branch under .github/downstream)
+# git checkout actions .github/workflows 
+# git commit .github/workflows -m "ci: Add downstream GitHub Actions workflows"
+
+# Commit and push temporary branch to downstream repo.
+git push origin tmp-release-1.1
+
+# Open PR from temporary branch into downstream release branch.
+# gh pr create --repo mesosphere/cluster-api --base downstream-release-1.1 --title "Pull in changes from upstream $TAG release."

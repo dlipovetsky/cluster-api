@@ -1,0 +1,23 @@
+# Create downstream release branch
+# 
+# - Remove upstream GHA workflows
+# - Add downstream release GHA workflow
+# - Run "keep up with upstream releases" workflow
+
+on:
+  workflow_dispatch:
+    inputs:
+      upstream_branch:
+        description: 'Upstream branch'
+        required: true
+        type: string
+
+jobs:
+  create_downstream_branch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create downstream branch
+        # Checkout repository into $GITHUB_WORKSPACE, i.e. the default working directory.
+        # See https://github.com/actions/checkout/tree/v3
+        uses: actions/checkout@v3
+        run: |
