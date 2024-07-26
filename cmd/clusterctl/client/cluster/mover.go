@@ -931,7 +931,22 @@ func (o *objectMover) restoreGroup(ctx context.Context, group moveGroup, toProxy
 // createTargetObject creates the Kubernetes object in the target Management cluster corresponding to the object graph node, taking care of restoring the OwnerReference with the owner nodes, if any.
 func (o *objectMover) createTargetObject(ctx context.Context, nodeToCreate *node, toProxy Proxy, mutators []ResourceMutatorFunc, existingNamespaces sets.Set[string]) error {
 	log := logf.Log
-	log.V(1).Info("Creating", nodeToCreate.identity.Kind, nodeToCreate.identity.Name, "Namespace", nodeToCreate.identity.Namespace)
+
+	// Get the source object.
+	obj := &unstructured.Unstructured{}
+	obj.SetAPIVersion(nodeToCreate.identity.APIVersion)
+	obj.SetKind(nodeToCreate.identity.Kind)
+	objKey := client.ObjectKey{
+		Namespace: nodeToCreate.identity.Namespace,
+		Name:      nodeToCreate.identity.Name,
+	}
+
+	obj, err := applyMutators(obj, mutators...)
+	if err != nil {
+		return err
+	}
+	// Mutators can change the namespace, so we apply them before logging what we create.
+	log.V(1).Info("Creating", obj.GetKind(), obj.GetName(), "Namespace", obj.GetNamespace())
 
 	if o.dryRun {
 		return nil
@@ -940,15 +955,6 @@ func (o *objectMover) createTargetObject(ctx context.Context, nodeToCreate *node
 	cFrom, err := o.fromProxy.NewClient(ctx)
 	if err != nil {
 		return err
-	}
-
-	// Get the source object
-	obj := &unstructured.Unstructured{}
-	obj.SetAPIVersion(nodeToCreate.identity.APIVersion)
-	obj.SetKind(nodeToCreate.identity.Kind)
-	objKey := client.ObjectKey{
-		Namespace: nodeToCreate.identity.Namespace,
-		Name:      nodeToCreate.identity.Name,
 	}
 
 	if err := cFrom.Get(ctx, objKey, obj); err != nil {
@@ -977,10 +983,6 @@ func (o *objectMover) createTargetObject(ctx context.Context, nodeToCreate *node
 		return err
 	}
 
-	obj, err = applyMutators(obj, mutators...)
-	if err != nil {
-		return err
-	}
 	// Applying mutators MAY change the namespace, so ensure the namespace exists before creating the resource.
 	if !nodeToCreate.isGlobal && !existingNamespaces.Has(obj.GetNamespace()) {
 		if err = o.ensureNamespace(ctx, toProxy, obj.GetNamespace()); err != nil {
@@ -1322,6 +1324,10 @@ func applyMutators(object client.Object, mutators ...ResourceMutatorFunc) (*unst
 	if object == nil {
 		return nil, nil
 	}
+
+	log := logf.Log
+	log.V(1).Info("Mutating", object.GetObjectKind().GroupVersionKind().Kind, object.GetName(), "Namespace", object.GetNamespace())
+
 	u := &unstructured.Unstructured{}
 	to, err := runtime.DefaultUnstructuredConverter.ToUnstructured(object)
 	if err != nil {
