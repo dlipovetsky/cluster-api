@@ -1329,6 +1329,9 @@ func applyMutators(object client.Object, mutators ...ResourceMutatorFunc) (*unst
 	}
 	u.SetUnstructuredContent(to)
 	for _, mutator := range mutators {
+		if mutator == nil {
+			continue
+		}
 		if err := mutator(u); err != nil {
 			return nil, errors.Wrapf(err, "error applying resource mutator to %q %s/%s",
 				u.GroupVersionKind(), object.GetNamespace(), object.GetName())
