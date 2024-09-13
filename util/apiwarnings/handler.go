@@ -33,16 +33,23 @@ type DiscardMatchingHandlerOptions struct {
 
 	// Expressions is a slice of regular expressions used to discard warnings.
 	// If the warning message matches any expression, it is not logged.
-	Expressions []regexp.Regexp
+	Expressions []string
 }
 
 // NewDiscardMatchingHandler initializes and returns a new DiscardMatchingHandler.
-func NewDiscardMatchingHandler(l logr.Logger, opts DiscardMatchingHandlerOptions) *DiscardMatchingHandler {
+func NewDiscardMatchingHandler(l logr.Logger, opts DiscardMatchingHandlerOptions) (*DiscardMatchingHandler, error) {
 	h := &DiscardMatchingHandler{logger: l, opts: opts}
 	if opts.Deduplicate {
 		h.logged = map[string]struct{}{}
 	}
-	return h
+	for _, exp := range opts.Expressions {
+		compiledExp, err := regexp.Compile(exp)
+		if err != nil {
+			return nil, err
+		}
+		h.expressions = append(h.expressions, *compiledExp)
+	}
+	return h, nil
 }
 
 // DiscardMatchingHandler is a handler that discards API server warnings
@@ -57,6 +64,8 @@ type DiscardMatchingHandler struct {
 	// used to keep track of already logged messages
 	// and help in de-duplication.
 	logged map[string]struct{}
+	// expressions are used to evaluate whether to log a message
+	expressions []regexp.Regexp
 }
 
 // HandleWarningHeader handles logging for responses from API server that are
@@ -66,7 +75,7 @@ func (h *DiscardMatchingHandler) HandleWarningHeader(code int, _, message string
 		return
 	}
 
-	for _, exp := range h.opts.Expressions {
+	for _, exp := range h.expressions {
 		if exp.MatchString(message) {
 			return
 		}

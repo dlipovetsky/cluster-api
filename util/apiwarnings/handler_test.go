@@ -17,7 +17,6 @@ limitations under the License.
 package apiwarnings
 
 import (
-	"regexp"
 	"testing"
 
 	"github.com/go-logr/logr/funcr"
@@ -31,13 +30,14 @@ func TestDiscardMatchingHandler(t *testing.T) {
 		code       int
 		message    string
 		wantLogged bool
+		wantErr    error
 	}{
 		{
 			name:    "log, if warning does not match any expression",
 			code:    299,
 			message: "non-matching warning",
 			opts: DiscardMatchingHandlerOptions{
-				Expressions: []regexp.Regexp{},
+				Expressions: []string{},
 			},
 			wantLogged: true,
 		},
@@ -46,9 +46,7 @@ func TestDiscardMatchingHandler(t *testing.T) {
 			code:    299,
 			message: "matching warning",
 			opts: DiscardMatchingHandlerOptions{
-				Expressions: []regexp.Regexp{
-					*regexp.MustCompile("^matching.*"),
-				},
+				Expressions: []string{"^matching.*"},
 			},
 			wantLogged: false,
 		},
@@ -57,7 +55,7 @@ func TestDiscardMatchingHandler(t *testing.T) {
 			code:    0,
 			message: "",
 			opts: DiscardMatchingHandlerOptions{
-				Expressions: []regexp.Regexp{},
+				Expressions: []string{},
 			},
 			wantLogged: false,
 		},
@@ -66,7 +64,7 @@ func TestDiscardMatchingHandler(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			g := NewWithT(t)
 			logged := false
-			h := NewDiscardMatchingHandler(
+			h, err := NewDiscardMatchingHandler(
 				funcr.New(func(_, _ string) {
 					logged = true
 				},
@@ -74,6 +72,7 @@ func TestDiscardMatchingHandler(t *testing.T) {
 				),
 				tt.opts,
 			)
+			g.Expect(err).ToNot(HaveOccurred())
 			h.HandleWarningHeader(tt.code, "", tt.message)
 			g.Expect(logged).To(Equal(tt.wantLogged))
 		})
